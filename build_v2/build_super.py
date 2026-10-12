@@ -1,4 +1,4 @@
-"""HR Super Master — Final v1.13.
+"""HR Super Master — Final v1.14 · v1.13 additions plus the v1.14 decisions in ja_v114.py.
 
 Starts from the v1.12.2 HR Super Master and keeps every sheet, value, formula,
 chart, table, filter and named range. Adds:
@@ -26,8 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ja_common as J  # noqa: E402
 import ja_person as P  # noqa: E402
 import ja_xlsx as X  # noqa: E402
+import ja_v114 as V  # noqa: E402
 
-OUTFILE = os.path.join(J.OUT, "IRIS_JA_2_HR_Super_Master_v1.13.xlsx")
+OUTFILE = os.path.join(J.OUT, f"IRIS_JA_2_HR_Super_Master_{J.VER}.xlsx")
 
 NAVY = "1F3864"
 RED_FILL = PatternFill("solid", fgColor="FFC7CE")
@@ -39,7 +40,38 @@ GROUPS = {
     "kra": ("KRAs RECEIVED FROM MANAGERS — as submitted · source talent-mapping files, October 2026", "375623", "E2EFDA"),
     "survey": ("WHAT THE EMPLOYEE SHARED IN THE SURVEY — per person · CARBON Mapping Master; other products need the How We Grow export", "7030A0", "EFE6F7"),
     "links": ("LINKS & DATA QUALITY — keys to the role profile and manager, data checks, weight sensitivity", "595959", "EDEDED"),
+    "hr": ("HR PROPOSED — v1.14 · top-down manager rule · department heads in Executive Leadership", "C00000", "FDECEC"),
 }
+HR_COLS = [
+    ("HR proposed level · v1.14", 9),
+    ("HR proposed band", 20),
+    ("HR proposed level title", 22),
+    ("Move vs v1.13 model level", 16),
+    ("Manager's HR proposed level", 10),
+    ("Manager rule check", 18),
+    ("How the HR proposed level was set", 50),
+    ("Layer from the CEO", 8),
+    ("Job family & sub-family · v1.14 change", 36),
+]
+
+
+def hr_values(M, p, pr, changed):
+    H = {h: i for i, h in enumerate(M["tm_hdr"])}
+    d = pr[p["i"]]
+    old = J.text(p["tm"][H["FINAL LEVEL"]])
+    lv = d["level"]
+    if V.band(lv) == "X" or lv == old:
+        move = "• Same as the model"
+    elif V.VAL.get(lv, 0) > V.VAL.get(old, 0):
+        move = "▲ Up"
+    else:
+        move = "▼ Down · pay and title protected"
+    fam = ""
+    if p["i"] in changed:
+        of, os_ = changed[p["i"]]
+        fam = f"Department head · moved to {V.HEAD_FAMILY} · {V.HEAD_SUB}; was {of} · {os_}"
+    return [lv, V.BAND_NAME.get(V.band(lv), ""), V.level_title(lv, p["tm"][H["Track"]]), move, d["mgr_level"] or "—",
+            d["check"], d["note"], d["depth"], fam]
 LINK_COLS = [
     ("Role ID · catalogue", 12),
     ("Reporting manager · Emp ID", 14),
@@ -123,7 +155,7 @@ def stamp(wb):
         for row in ws.iter_rows(min_row=1, max_row=3):
             for cell in row:
                 if isinstance(cell.value, str) and "Final v1.12 · October 2026" in cell.value:
-                    cell.value = cell.value.replace("Final v1.12 · October 2026", "Final v1.13 · October 2026")
+                    cell.value = cell.value.replace("Final v1.12 · October 2026", f"{J.VERSION} · October 2026")
 
 
 def person_card(wb, start_col):
@@ -167,6 +199,9 @@ def person_card(wb, start_col):
     section("LINKS & DATA QUALITY")
     for h, _ in LINK_COLS:
         line(h, 40 if h == "Data quality" else 30)
+    section("HR PROPOSED — v1.14")
+    for h, _ in HR_COLS:
+        line(h, 60 if h.startswith(("How", "Job family")) else 30)
     ws.print_area = f"A1:H{r - 1}"
     return r - 1
 
@@ -275,28 +310,82 @@ def contents_and_start(wb, n_unmapped, stats):
             c.alignment = Alignment(wrap_text=True, vertical="top")
         st.row_dimensions[r].height = 75
         r += 1
+    r += 1
+    c = st.cell(r, 1, "What v1.14 adds — HR decisions of 12 October 2026")
+    c._style = copy.copy(h5._style)
+    r += 1
+    for j, h in enumerate(["#", "Decision", "What changed", "Where"], 1):
+        st.cell(r, j, h)._style = copy.copy(h6._style)
+    r += 1
+    rows14 = [
+        ("Titles", f"D2 = Senior Vice President / Business Head · D1 = Associate Vice President / Distinguished Principal — the D1 specialist title is decided: Distinguished Principal · B1 = Team Lead / Specialist / Asst Manager. {stats.get('titled', 0)} IRIS title cells updated; raw data and people's designations are left as received.", "Every ladder, catalogue and title column"),
+        ("Department and function heads", f"The top person of each department who leads a team at C1 or above — {stats.get('heads', 0)} people — moves to job family Executive Leadership, sub-family Business Head. Their earlier family is kept on sheet 2, HR PROPOSED.", "Sheets 1a, 2, 3 · orange cells"),
+        ("Top-down manager rule · hybrid", f"Applied from the CEO down. Under a head at C1 or above a reportee sits in a lower band; below C1 a reportee sits at least one level below the manager; a Band A lead with peer-level reportees becomes B1 Team Lead; CEO with CXOs is the agreed exception. {stats.get('down', 0)} people move down · pay and title protected · {stats.get('up', 0)} move up. FINAL LEVEL keeps the v1.13 model; the HR proposed level sits beside it.", "Sheet 2 · HR PROPOSED · 1b Person Card"),
+        ("Why not the strict band rule", "Tested first: reporting chains run up to 9 layers but there are five bands, so capping by band cascades — 88 people moved down and 172 could not be placed below their manager. HR chose the hybrid rule instead.", "—"),
+    ]
+    for i, row in enumerate(rows14, 1):
+        for j, v in enumerate((i,) + row, 1):
+            c = st.cell(r, j, v)
+            c._style = copy.copy(body._style)
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+        st.row_dimensions[r].height = 90
+        r += 1
 
 
 def main(srcdir):
     os.makedirs(J.OUT, exist_ok=True)
     M, S, people, unmapped = J.build(srcdir)
+    F_prev = P.Folds(M, people)
+    org = V.Org(M, people, F_prev)
+    heads = V.department_heads(M, people, org)
+    changed = V.apply_heads(M, people, F_prev, heads)
     F = P.Folds(M, people)
+    pr = V.propose(org)
     wb = openpyxl.load_workbook(J.MASTER)
+    titled = V.retitle(wb)
 
     # sheet 2
     ws2 = wb["2. Talent Mapping"]
     rows = []
-    stats = {"kra": 0, "survey": 0, "restored": 0}
+    stats = {"kra": 0, "survey": 0, "restored": 0, "heads": len(heads), "titled": sum(titled.values())}
     for p in people:
         k, sv, links = person_values(M, F, p)
         stats["kra"] += k[5].startswith("Received")
         stats["survey"] += sv[-1].startswith("Per-person")
-        rows.append(k + sv + links)
+        rows.append(k + sv + links + hr_values(M, p, pr, changed))
     assert [J.text(ws2.cell(7 + i, 2).value) for i in range(len(people))] == [p["emp"] for p in people]
+    # department heads: family and sub-family on every person sheet
+    for sheet, fam_h, sub_h, hrow in (("2. Talent Mapping", "Job family", "Sub-family · what they do", 6),
+                                      ("1a. Placements", "Job family", "Sub-family", 6),
+                                      ("3. Raw Data & Market Standards", "Job family", "Sub-family", 6)):
+        ws = wb[sheet]
+        hdr = {J.text(c.value): c.column for c in ws[hrow]}
+        key_col = 2 if sheet != "1a. Placements" else 1
+        name_col = key_col + 1
+        idx = {(J.text(ws.cell(r, key_col).value), J.text(ws.cell(r, name_col).value)): r for r in range(hrow + 1, ws.max_row + 1)}
+        for p in heads:
+            r = idx[(p["emp"], p["name"])]
+            for h, v in ((fam_h, V.HEAD_FAMILY), (sub_h, V.HEAD_SUB)):
+                c = ws.cell(r, hdr[h])
+                c.value = v
+                c.fill = PatternFill("solid", fgColor="F8CBAD")
+                c.font = Font(name="Calibri", size=9, color="833C0B", bold=True)
     start, end = add_columns(ws2, "T_2__Talent_Mapping", 6, 7,
-                             [("kra", P.KRA_COLS), ("survey", P.SURVEY_COLS), ("links", LINK_COLS)], rows)
+                             [("kra", P.KRA_COLS), ("survey", P.SURVEY_COLS), ("links", LINK_COLS), ("hr", HR_COLS)], rows)
+    hr_first = end - len(HR_COLS) + 1
+    for i, p in enumerate(people):
+        c = ws2.cell(7 + i, hr_first)
+        b = V.band(c.value)
+        c.font = Font(name="Calibri", size=10, bold=True)
+        mv = ws2.cell(7 + i, hr_first + 3)
+        if J.text(mv.value).startswith("▲"):
+            mv.fill, mv.font = PatternFill("solid", fgColor="C6EFCE"), Font(name="Calibri", size=9, color="006100")
+        elif J.text(mv.value).startswith("▼"):
+            mv.fill, mv.font = PatternFill("solid", fgColor="FFEB9C"), Font(name="Calibri", size=9, color="9C5700")
     for rr in range(7, 7 + len(people)):
         ws2.row_dimensions[rr].height = max(ws2.row_dimensions[rr].height or 0, 340)
+    stats["down"] = sum(1 for r in rows if J.text(r[-6]).startswith("▼"))
+    stats["up"] = sum(1 for r in rows if J.text(r[-6]).startswith("▲"))
 
     # sheet 3
     ws3 = wb["3. Raw Data & Market Standards"]
@@ -322,7 +411,8 @@ def main(srcdir):
     os.makedirs(work, exist_ok=True)
     n_f, errors = X.cache_values(OUTFILE, work)
     print(f"Wrote {OUTFILE}: {len(people)} people · KRAs {stats['kra']} · CARBON survey {stats['survey']} · "
-          f"raw restored {stats['restored']} · not yet mapped {n_un} · formulas {n_f} · formula errors {len(errors)}")
+          f"raw restored {stats['restored']} · not yet mapped {n_un} · heads {len(heads)} · titles {stats['titled']} · "
+          f"HR proposed down {stats['down']} up {stats['up']} · formulas {n_f} · formula errors {len(errors)}")
     if errors:
         print(errors[:20])
     return OUTFILE

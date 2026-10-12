@@ -1,4 +1,4 @@
-"""HR Master — Simplified, Final v1.13.
+"""HR Master — Simplified, Final v1.14.
 
 Five sheets, read in order, with nothing from the HR Super Master's people data left out:
   1. Framework & Model — the method end to end, the live Weightage Matrix, how to
@@ -32,9 +32,10 @@ import ja_common as J  # noqa: E402
 import ja_person as P  # noqa: E402
 import ja_style as Y  # noqa: E402
 import ja_xlsx as X  # noqa: E402
+import ja_v114 as V  # noqa: E402
 from build_super import LINK_COLS, person_values  # noqa: E402
 
-OUTFILE = os.path.join(J.OUT, "IRIS_JA_2S_HR_Master_Simplified_v1.13.xlsx")
+OUTFILE = os.path.join(J.OUT, f"IRIS_JA_2S_HR_Master_Simplified_{J.VER}.xlsx")
 FW, TMN, RAWN, PCN, RPN = "1. Framework & Model", "2. Talent Mapping", "3. Raw Data", "4. Person Card", "5. Role Profiles"
 TMQ, RPQ = f"'{TMN}'", f"'{RPN}'"
 LEVELS = '{"A1","A2","A3","B1","B2","B3","C1","C2","D1","D2","E1","E2"}'
@@ -123,13 +124,14 @@ def framework_sheet(wb, src_wb, M, stats):
     r = 5
     # how to use
     intro = [
-        ("This file", "HR Master — Simplified: five sheets that hold every person, every number and every reason from the HR Super Master v1.13, laid out in one line from the method to the person to the role. HR edits it; the other files are rebuilt from it."),
+        ("This file", "HR Master — Simplified: five sheets that hold every person, every number and every reason from the HR Super Master v1.14, laid out in one line from the method to the person to the role. HR edits it; the other files are rebuilt from it."),
         ("Sheet 2 · Talent Mapping", f"One row per person · {stats['people']} people · every column grouped left to right: who → role before and after → the live score → how the level was set → the reasons for each rating → KRAs received from the manager → what the employee shared in the survey → role profile and business impact → talent, competencies, learning, mobility → recruitment → market → inputs, decisions and data quality → pay, blank → validation → HR update."),
         ("Sheet 3 · Raw Data", f"Every raw field as received from HRIS, the survey count, the manager talent-mapping files and the CARBON Mapping Master · values the earlier clean-up lost are restored from the source files · {stats['unmapped']} people found in the source files but not yet mapped are added at the bottom, marked."),
         ("Sheet 4 · Person Card", "Type or paste an Emp ID, or pick Product, then Name: every column of sheet 2 for that person, with their role profile from sheet 5 and a ratings chart."),
         ("Sheet 5 · Role Profiles", f"One row per role in the IRIS role catalogue · {stats['roles']} roles · what the role is for, does, decides and needs; its weightage, live from the matrix in section 4; the step below and above on the ladder; market equivalents; references."),
         ("Live numbers", "Weights, points, the score and 'Level the score indicates' are Excel formulas. Change a yellow weight in section 4 or a Business Impact rating on sheet 2 and they recalculate. FINAL LEVEL is a decision, not a formula: it moves through the rules R1–R13 or an approved leadership decision."),
         ("How to update", "Write changes in the yellow HR UPDATE columns at the right of sheet 2 · field, new value, reason, source, who, date · or in the validation columns. Each change is read back on the next rebuild, so every number stays traceable."),
+        ("v1.14 decisions", "HR, 12 October 2026: D2 = Senior Vice President / Business Head · D1 = Associate Vice President / Distinguished Principal · B1 = Team Lead / Specialist / Asst Manager. The 18 department and function heads sit in Executive Leadership · Business Head. HR PROPOSED on sheet 2 applies the top-down manager rule: under a head at C1 or above a reportee sits in a lower band; below C1 at least one level below the manager. The business-head workbook takes the HR proposed level from here."),
         ("Privacy", "HR only. Survey content is shown against names by HR's decision of 12 October 2026. Gender, date of birth, age, e-mail, mobile, resignation and relieving dates are never written. Pay columns stay blank until a pay survey is bought."),
     ]
     c = ws.cell(r, 1, "HOW TO USE THIS FILE")
@@ -328,6 +330,11 @@ def calc_and_track(ws, r, M, stats):
     r = table(ws, r, ["What is missing", "Open requests"], sorted(t3.items(), key=lambda x: -x[1]))
     sub("5d · Decisions open today · by type")
     r = table(ws, r, ["Decision type", "Open"], sorted(t2.items(), key=lambda x: -x[1]))
+    sub("5f · HR draft — Sales anchors by level · HR's sketch of 12 October 2026, to confirm the unit and how L1–L6 map to IRIS levels")
+    r = table(ws, r, ["Parameter", "L1", "L2", "L3", "L4", "L5", "L6"],
+              [("Accountability", "20–30", "30–40", "50", "60", "80", "100"), ("Impact", "5", "25", "Revenue numbers", "", "", ""),
+               ("Complexity", "", "", "", "", "", ""), ("Autonomy", "", "", "", "", "", ""), ("Experience", "", "", "", "", "", ""),
+               ("Education", "", "", "", "", "", "")])
     sub("5e · Validation, in order · V1–V6")
     val = [("1", "Manager validation", "Sheet 2 VALIDATION: agree, change or discuss each placement. A change needs evidence and a rule ID."),
            ("2", "HR inputs", "Red cells: experience corrections, provisional placements R2, missing HRIS fields, reporting lines."),
@@ -402,6 +409,11 @@ def tm_spec(M):
             ("Current level", 8, T("Current level")), ("FINAL LEVEL", 8, T("FINAL LEVEL")), ("Level title", 16, T("Level title")),
             ("Band", 14, T("Band")), ("Track", 12, T("Track")), ("Change vs current", 14, T("Change vs current")),
             ("Radford / Mercer code", 10, R("Radford / Mercer code")), ("Pave level", 12, R("Pave level")), ("SFIA 9", 12, R("SFIA 9"))]),
+        ("HR PROPOSED — v1.14 · top-down manager rule · department heads in Executive Leadership", "C00000", [
+            (h, w, T(h)) for h, w in (("HR proposed level · v1.14", 9), ("HR proposed band", 20), ("HR proposed level title", 22),
+                                       ("Move vs v1.13 model level", 16), ("Manager's HR proposed level", 10), ("Manager rule check", 18),
+                                       ("How the HR proposed level was set", 50), ("Layer from the CEO", 8),
+                                       ("Job family & sub-family · v1.14 change", 36))]),
         ("SCORE — rating × weight = points · weights live from sheet 1 section 4", "806000", score),
         ("HOW THE LEVEL WAS SET", "375623", [
             ("What set the level", 30, ("x", "set")), ("Why these weights", 40, T("Why these weights")),
@@ -484,7 +496,7 @@ def talent_sheet(wb, src_wb, M, F, people, extras):
     ws2 = src_wb["2. Talent Mapping"]
     ws3 = src_wb["3. Raw Data & Market Standards"]
     ws8 = src_wb["8. Talent, Learning & Mobility"]
-    th = {h: i + 1 for i, h in enumerate(M["tm_hdr"])}
+    th = {J.text(c.value): c.column for c in ws2[6] if c.value is not None}
     rh = {h: i + 1 for i, h in enumerate(M["raw_hdr"])}
     s8h = {h: i + 1 for i, h in enumerate(M["s8_hdr"])}
     s8row = {}
@@ -768,6 +780,13 @@ def role_sheet(wb, src_wb, M, F, people, stats):
         vals = {}
         for h, _ in cat_cols:
             vals[h] = c[cat_idx[h]]
+        # holders as of v1.14: department heads now hold their Executive Leadership role
+        vals["Holders"] = len(hs)
+        vals["Holders here"] = len(hs)
+        vals["Holders by business"] = " · ".join(f"{b} {n}" for b, n in sorted(collections.Counter(p["biz"] for p in hs).items()))
+        vals["Who"] = ", ".join(p["name"] for p in hs) or "— no holder since v1.14"
+        vals["Department · s here"] = ", ".join(sorted({J.text(p["tm"][H["Department"]]) for p in hs}))
+        vals["Designations used at IRIS"] = "\n".join(sorted({J.text(p["tm"][H["Final designation"]]) for p in hs})) or J.text(c[cat_idx["Designations used at IRIS"]])
         vals.update({
             "Step below · same sub-family and track": below, "Step above · same sub-family and track": above,
             "The ladder in this sub-family · ★ = this role": ladder,
@@ -921,7 +940,7 @@ def person_card(wb, M, people, tm_cols, tm_last, rp_cols, tm_len):
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
     r += 1
     rid_col = next(col for g, d, h, col in tm_cols if h == "Role ID · catalogue")
-    rp_last = 6 + 175
+    rp_last = 6 + len(M["cat"])
     for h in ("Purpose", "Key responsibilities", "Decision rights", "Step below · same sub-family and track", "Step above · same sub-family and track",
               "The ladder in this sub-family · ★ = this role", "Main weight row · most holders", "Typical score · live",
               "★ Must-have competencies", "Next step", "References"):
@@ -970,8 +989,11 @@ def person_card(wb, M, people, tm_cols, tm_last, rp_cols, tm_len):
 def main(srcdir):
     os.makedirs(J.OUT, exist_ok=True)
     M, S, people, unmapped = J.build(srcdir)
+    F_prev = P.Folds(M, people)
+    org = V.Org(M, people, F_prev)
+    V.apply_heads(M, people, F_prev, V.department_heads(M, people, org))
     F = P.Folds(M, people)
-    src_wb = openpyxl.load_workbook(os.path.join(J.OUT, "IRIS_JA_2_HR_Super_Master_v1.13.xlsx"))
+    src_wb = openpyxl.load_workbook(os.path.join(J.OUT, f"IRIS_JA_2_HR_Super_Master_{J.VER}.xlsx"))
     extras = {}
     stats = {"people": len(people), "kra": 0, "survey": 0, "id_diff": 0, "roles": len(M["cat"])}
     for p in people:
