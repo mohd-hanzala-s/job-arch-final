@@ -44,16 +44,33 @@ import ja_raw as RW  # noqa: E402
 import ja_scale as SC  # noqa: E402
 import ja_xlsx as X  # noqa: E402
 from build_bh import (EXP_SPLIT, PARAMS, PKEYS, REFS, RG_NAME, TILT, TINT, cell, default_weights,  # noqa: E402
-                      headers, load_reference, market_weights, name_range, qual_rank, rg_of, short)
+                      load_reference, market_weights, name_range, qual_rank, rg_of, short)
+from build_bh import headers as _headers  # noqa: E402
 from build_super import person_values  # noqa: E402
 
-VERSION = "v2.1"
-OUTDIR = os.path.join(J.ROOT, "IRIS_JA_Model_v2.1")
-OUTFILE = os.path.join(OUTDIR, "IRIS_JA_Model_v2.1.xlsx")
-STAMP = "IRIS · Job Architecture Model v2.1 · October 2026 · Internal — Confidential · HR and business leaders"
-S_HOW, S_LAD, S_RL, S_RM, S_RJ, S_MB, S_TM, S_PC, S_RAW, S_BE, S_REF = (
-    "1. How it works", "2. Ladder", "3. Role Ladder & Weightage", "4. Role Definitions", "5. Role Journey", "6. Market Benchmark",
-    "7. Talent Mapping", "8. Person Card", "9. Raw Data", "Backend Data", "References & Benchmarks")
+VERSION = "v2.2"
+OUTDIR = os.path.join(J.ROOT, "IRIS_JA_Model_v2.2")
+MASTER_FILE = os.path.join(OUTDIR, "IRIS_JA_Master_v2.2.xlsx")
+SIMPLE_FILE = os.path.join(OUTDIR, "IRIS_JA_Simplified_v2.2.xlsx")
+OUTFILE = MASTER_FILE
+NAMES = {
+    False: ("1. How it works", "2. Ladder", "3. Role Ladder & Weightage", "4. Role Definitions", "5. Role Journey", "6. Market Benchmark",
+            "7. Talent Mapping", "8. Person Card", "9. Raw Data", "Backend Data", "References & Benchmarks"),
+    True: ("1. How it works", "2. Ladder", "3. Role Ladder & Weightage", "zz Role Definitions", "4. Role Journey", "zz Market Benchmark",
+           "5. Talent Mapping", "6. Person Card", "7. Raw Data", "Backend Data", "References & Benchmarks"),
+}
+# the Simplified file keeps the master's story but not its reference sheets: master sheet number → simplified wording
+RENUMBER = {"4": "4 of the Master file", "5": "4", "6": "6 of the Master file", "7": "5", "8": "6", "9": "7"}
+S_HOW, S_LAD, S_RL, S_RM, S_RJ, S_MB, S_TM, S_PC, S_RAW, S_BE, S_REF = NAMES[False]
+STAMP = "IRIS · Job Architecture Master v2.2 · October 2026 · Internal — Confidential · HR and business leaders"
+
+
+def set_variant(simple):
+    global S_HOW, S_LAD, S_RL, S_RM, S_RJ, S_MB, S_TM, S_PC, S_RAW, S_BE, S_REF, STAMP, OUTFILE
+    S_HOW, S_LAD, S_RL, S_RM, S_RJ, S_MB, S_TM, S_PC, S_RAW, S_BE, S_REF = NAMES[simple]
+    STAMP = (f"IRIS · Job Architecture {'Simplified' if simple else 'Master'} {VERSION} · October 2026 · Internal — Confidential · "
+             "HR and business leaders")
+    OUTFILE = SIMPLE_FILE if simple else MASTER_FILE
 SURVEY_COL = "Inputs received in the survey"
 Q = lambda n: f"'{n}'"
 BANDS = ["A", "B", "B+", "C", "C+", "D", "E"]
@@ -82,14 +99,14 @@ def place(org, pen=6.0, up_cost=2.0, span=2):
         out = {}
         for x in V.LEVELS_PC:
             nb = V.band(x)
-            if nb in ("B+", "C+") and nb != b:
-                continue
+            if nb in ("B+", "C+") and nb != b and not org.kids[i]:
+                continue   # a Player-Coach step is open only to someone who leads people while still delivering
             if (nb == "E") != (b == "E"):
                 continue
             if abs(BANDS.index(nb) - k) > span:
                 continue
             d = V.VAL[x] - V.VAL[lv]
-            out[x] = d * up_cost if d > 0 else -d
+            out[x] = (d * up_cost if d > 0 else -d) + (0.25 if nb in ("B+", "C+") and nb != b else 0.0)
         return out
 
     def rel(cl, pl):
@@ -140,6 +157,64 @@ def place(org, pen=6.0, up_cost=2.0, span=2):
         sr = solve(r)
         assign(r, min(sr, key=sr.get))
     return new, flag
+
+
+def recommended_lines(org, by_i, srcdir):
+    """Reporting lines the business itself has proposed (CARBON Mapping Master · New Reporting Manager), applied only where
+    the current line puts a manager and reportee in the same band whatever the levels: a reporting chain deeper than the bands.
+    Returns {person: (old manager, new manager)}."""
+    path = next(iter(sorted(__import__("glob").glob(os.path.join(srcdir, "*CARBON_Talent_Mapping*.xlsx")))), None)
+    if not path:
+        return {}
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    rows = list(wb["Mapping Master"].iter_rows(values_only=True))
+    wb.close()
+    h = {J.text(x): j for j, x in enumerate(rows[0])}
+    by_name = {J.nname(p["name"]): i for i, p in by_i.items()}
+    sys.setrecursionlimit(10000)
+
+    def depth(i):
+        return 1 + max((depth(k) for k in org.kids[i]), default=0)
+    out = {}
+    for r in rows[1:]:
+        if J.text(r[h["Change in RM?"]]) != "Yes":
+            continue
+        i, nm = by_name.get(J.nname(r[h["Employee Name"]])), by_name.get(J.nname(r[h["New Reporting Manager"]]))
+        if i is None or nm is None or org.mgr.get(i) == nm:
+            continue
+        m = org.mgr.get(i)
+        # bands below the manager's band that a chain of this depth needs: A, B, B+, C, C+ under D; more than that cannot fit
+        if m is not None and V.band(org.level[m]) == "D" and V.band(org.level[i]) == "D" and depth(i) > 5:
+            org.kids[m].remove(i)
+            org.kids[nm].append(i)
+            org.mgr[i] = nm
+            out[i] = (m, nm)
+    return out
+
+
+def headers(ws, groups, hrow=6):
+    """Column headers, with each group's title merged across its columns so it is never cut off."""
+    out = _headers(ws, groups, hrow)
+    c = 1
+    for title, dark, cols in groups:
+        if len(cols) > 1:
+            ws.merge_cells(start_row=hrow - 1, start_column=c, end_row=hrow - 1, end_column=c + len(cols) - 1)
+        c += len(cols)
+    return out
+
+
+def legend(ws, row=4):
+    """What the colours mean in this workbook."""
+    keys = [("Yellow · yours to fill", "FFF2CC"), ("Blue · IRIS base, HR may edit", "DDEBF7"),
+            ("Red · a structure decision or a warning", "FFC7CE"), ("Orange · a title to align", "F8CBAD"),
+            ("Band colours on levels: A · B · B+ · C · C+ · D · E", Y.BAND.get("B", "D9E1F2"))]
+    for j, (t_, fill) in enumerate(keys):
+        x = ws.cell(row, 1 + 2 * j, t_)
+        x.fill = PatternFill("solid", fgColor=fill)
+        x.font = Y.font(8, True)
+        x.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.merge_cells(start_row=row, start_column=1 + 2 * j, end_row=row, end_column=2 + 2 * j)
+    ws.row_dimensions[row].height = 24
 
 
 # ================================================================ helpers
@@ -194,6 +269,12 @@ def std_title(rr, lv, des, track, model_lv=None):
     if down:
         return std, f"Keeps {des} for one cycle · then {std}"
     return std, f"{des} → {std}"
+
+
+def blank_if_none(v):
+    """'Not provided · HRIS' and the like mean nothing was received: the cell stays blank."""
+    t = J.text(v)
+    return "" if RW.PLACEHOLDER.match(t) else t
 
 
 def put_row(ws, r, cols, vals, tint_by_title=True):
@@ -340,7 +421,8 @@ def survey_summary(sv, ev, record):
 
 
 # ================================================================ main
-def main(srcdir):
+def main(srcdir, simple=False):
+    set_variant(simple)
     os.makedirs(OUTDIR, exist_ok=True)
     M, S, people, unmapped = J.build(srcdir)
     F_prev = P.Folds(M, people)
@@ -350,6 +432,7 @@ def main(srcdir):
     F = P.Folds(M, people)
     R = load_reference(J.MASTER)
     H = {h: i for i, h in enumerate(M["tm_hdr"])}
+    line_changes = recommended_lines(org, by_i_all := {p["i"]: p for p in people}, srcdir)
     new, flag = place(org)
     order = [i for i, d in org.top_down()]
     depth = dict(org.top_down())
@@ -425,6 +508,53 @@ def main(srcdir):
                 t_ = f"{t_} · {lv}"
             rr["std"][lv] = t_
             used.add(t_)
+    # ---- the framework is role-based: a role is a sub-family. IC and Manager are two lanes inside it in Bands B and C — the
+    # dual career path — and one shared path in Band A, at the Player-Coach steps and in Bands D and E.
+    fw = collections.OrderedDict()
+    for k in all_keys:
+        f_ = fw.setdefault((k[0], k[1]), {"fam": k[0], "sub": k[1], "lanes": {}, "people": []})
+        f_["lanes"][k[2]] = roles[k]
+        f_["people"] += roles[k]["people"]
+    fw_keys = sorted(fw, key=lambda x: (x[0], x[1]))
+    for n, fk in enumerate(fw_keys, 1):
+        f_ = fw[fk]
+        f_["id"], f_["name"] = f"R{n:03d}", fk[1]
+        works = collections.Counter()
+        for l_ in f_["lanes"].values():
+            works[l_["work"]] += len(l_["people"]) or 0.1
+        f_["work"] = works.most_common(1)[0][0]
+        levels = set()
+        for t_, l_ in f_["lanes"].items():
+            if t_ != "Consultant":
+                levels |= set(l_["ladder"])
+        rows_ = []
+        for lv in sorted(levels, key=lambda x: -V.VAL[x]):
+            if V.band(lv) in ("B", "C") and fk[0] not in (V.HEAD_FAMILY, V.ENT_FAMILY):
+                rows_ += [(lv, t_) for t_ in ("IC", "Manager") if t_ in f_["lanes"] and lv in f_["lanes"][t_]["ladder"]]
+            else:
+                rows_.append((lv, "All"))
+        f_["rows"] = rows_
+        for i in f_["people"]:
+            by_i[i]["fw"] = fk
+
+    def lane_of(f_, lv, tg):
+        if tg not in ("IC", "Manager"):
+            return None
+        return tg if V.band(lv) in ("B", "C") and f_["fam"] not in (V.HEAD_FAMILY, V.ENT_FAMILY) else "All"
+
+    def row_tg(f_, lane):
+        return lane if lane != "All" else ("IC" if "IC" in f_["lanes"] else "Manager")
+
+    def title_at(f_, lv, lane):
+        if lane != "All":
+            return f_["lanes"][lane]["std"].get(lv, "")
+        # one shared path: the title people hold here wins; else the IC lane's, else the manager lane's
+        for pick in ("std_head", "std"):
+            for t_ in ("IC", "Manager"):
+                l_ = f_["lanes"].get(t_)
+                if l_ and lv in l_[pick]:
+                    return l_[pick][lv]
+        return ""
     W = Weights(R)
 
     wb = openpyxl.Workbook()
@@ -462,14 +592,26 @@ def main(srcdir):
     name_range(wb, "R5_MOVE", S_BE, f"$D${top}:$D${r - 1}")
     name_range(wb, "LIST_R5", S_BE, f"$A${top}:$A${r - 1}")
     r += 1
-    for j, h in enumerate(["Level", "Value", "Band", "Band rank", "Standard ladder", "Player-Coach ladder"], 1):
+    for j, h in enumerate(["Level", "Value", "Band", "Band rank", "Standard ladder", "Player-Coach ladder",
+                           "Highest level a reportee may hold · standard ladder", "· Player-Coach ladder"], 1):
         Y.header(ws.cell(r, j, h), Y.NAVY)
     r += 1
     top = r
+
+    def cap_for(m, ladder):
+        """The band rule: a reportee sits in a lower band than the manager; under the CEO, a Chief Officer may sit in Band E."""
+        bm = V.band(m)
+        if bm not in BANDS:
+            return None
+        if m == "E2":
+            return "E1"
+        ok = [x for x in ladder if BANDS.index(V.band(x)) < BANDS.index(bm)]
+        return ok[-1] if ok else None
     for k, lv in enumerate(V.LEVELS_PC + ["X1", "X2", "X3"]):
         b = V.band(lv)
         vals = (lv, V.VAL.get(lv, 0), b, BANDS.index(b) + 1 if b in BANDS else 0,
-                V.LEVELS_STD[k] if k < len(V.LEVELS_STD) else None, V.LEVELS_PC[k] if k < len(V.LEVELS_PC) else None)
+                V.LEVELS_STD[k] if k < len(V.LEVELS_STD) else None, V.LEVELS_PC[k] if k < len(V.LEVELS_PC) else None,
+                cap_for(lv, V.LEVELS_STD), cap_for(lv, V.LEVELS_PC))
         for j, v in enumerate(vals, 1):
             cell(ws, r, j, v, "FFFFFF", j == 1)
         r += 1
@@ -479,6 +621,8 @@ def main(srcdir):
     name_range(wb, "LAD_STD", S_BE, f"$E${top}:$E${top + 11}")
     name_range(wb, "LAD_PC", S_BE, f"$F${top}:$F${top + 13}")
     name_range(wb, "LIST_LEVELS", S_BE, f"$A${top}:$A${r - 1}")
+    name_range(wb, "CAP_STD", S_BE, f"$G${top}:$G${r - 1}")
+    name_range(wb, "CAP_PC", S_BE, f"$H${top}:$H${r - 1}")
     r += 1
     Y.header(ws.cell(r, 1, "People · for the Person Card"), Y.NAVY)
     r += 1
@@ -527,18 +671,18 @@ def main(srcdir):
 
     # ================================================================ Role Ladder & Weightage
     ws = ws_rl
-    Y.banner(ws, "Role Ladder & Weightage — every department, every role, every level",
-             "Sheet 3 · The base of the model. For each department: each role, and under it every level from A1 Intern up to the top of the "
-             "role — held today or vacant. Weightage is five steps — VL 0–20 · L 20–40 · M 40–60 · H 60–80 · VH 80–100 — or an exact "
-             "number 0–100. The blue IRIS cells are the base: HR can change them and everyone at that role and level is re-scored. The "
-             "yellow Leader cells are the business head's: on the ROLE row they re-weight every level of the role in the department; on a "
-             "level row they win over the ROLE row. 'Share' shows how much each parameter now counts. Talent Mapping follows at once; a "
-             "person's own weightage typed on Talent Mapping wins over all of this. Roles nobody holds yet are at the end.",
+    Y.banner(ws, "Role Ladder & Weightage — every role, every level, the weightage and why",
+             "Sheet 3 · The base of the model. A role is a sub-family; it runs from A1 Intern to the top of the role, held today or "
+             "vacant. In Bands B and C the role has two lanes — IC and Manager — because the market weighs them differently; Band A, "
+             "the Player-Coach steps and Bands D and E have one. Weightage is five steps — VL 0–20 · L 20–40 · M 40–60 · H 60–80 · "
+             "VH 80–100 — or a number 0–100. Blue IRIS cells are the base: HR can change them and everyone on that row is re-scored. "
+             "Yellow Leader cells: on the ROLE row they re-weight every level of the role across IRIS; on a level row they win over the "
+             "ROLE row. 'Share' shows how much each parameter now counts. A person's own weightage on Talent Mapping wins over all of this.",
              STAMP, width_cols=16)
-    Y.colour_key(ws, 4)
-    groups = [("WHERE", "1F3864", [("Business", 10), ("Department", 18), ("Type of work", 18)]),
-              ("ROLE AND LEVEL", "1F3864", [("Role ID", 8), ("Role", 30), ("Job family", 20), ("Track", 9), ("Row", 7), ("Level", 7),
-                                            ("Band", 18), ("Standard title at this level", 30), ("People in IRIS", 8)]),
+    legend(ws, 4)
+    groups = [("ROLE AND LEVEL", "1F3864", [("Job family", 20), ("Role ID", 8), ("Role · sub-family", 30), ("Type of work", 18),
+                                            ("Row", 7), ("Level", 7), ("Lane", 9), ("Band", 18), ("Standard title at this level", 30),
+                                            ("People in IRIS", 8)]),
               ("WEIGHTAGE · IRIS BASE — editable by HR · re-scores everyone here", "806000", [(f"IRIS · {n}", 9) for _, n in PARAMS]),
               ("WEIGHTAGE · MARKET — published evidence, sheet 6", "3A3838", [(f"Market · {n}", 9) for _, n in PARAMS]),
               ("WEIGHTAGE · LEADER — yours · ROLE row = every level · a level row wins", "BF8F00", [(f"Leader · {n}", 9) for _, n in PARAMS]),
@@ -556,60 +700,62 @@ def main(srcdir):
     dv_rl = DataValidation(type="list", formula1="LIST_W5", allow_blank=True, errorStyle="warning", showErrorMessage=True,
                            errorTitle="Weightage", error="Use VL, L, M, H or VH — or type a number from 0 to 100.")
     ws.add_data_validation(dv_rl)
-    held_in = collections.defaultdict(list)   # (business, department, role key) → people
+    at_row = collections.Counter()
     for i in order:
         p = by_i[i]
-        if p["role"][2] == "Consultant":
-            continue
-        held_in[(p["biz"], J.text(p["tm"][H["Department"]]), p["role"])].append(i)
-    blocks = sorted(held_in, key=lambda x: (x[0].lower(), x[1].lower(), roles[x[2]]["id"]))
-    blocks += [("IRIS", "Not yet held", k) for k in vacant]
+        f_ = fw[p["fw"]]
+        ln = lane_of(f_, new[i], p["role"][2])
+        if ln:
+            at_row[(f_["id"], new[i], ln)] += 1
     lad_key = {}
     r = 7
     rl_top = r
-    for biz, dept, k in blocks:
-        rr = roles[k]
-        if not rr["ladder"]:
+    for fk in fw_keys:
+        f_ = fw[fk]
+        if not f_["rows"]:
             continue
-        hold = held_in.get((biz, dept, k), [])
-        work = R["dept_type"].get((biz, dept)) or rr["work"]
-        hkey = f"{biz}|{dept}|{rr['id']}|ROLE"
-        here = collections.Counter(new[i] for i in hold)
-        held_txt = " · ".join(f"{lv} {here[lv]}" for lv in rr["ladder"] if here[lv])
-        vals = {"Business": biz, "Department": dept, "Type of work": work, "Role ID": rr["id"], "Role": rr["name"], "Job family": rr["fam"],
-                "Track": rr["tg"], "Row": "ROLE", "Level": f"{rr['ladder'][-1]}–{rr['ladder'][0]}" if len(rr["ladder"]) > 1 else rr["ladder"][0],
-                "Band": "", "Standard title at this level": "ROLE row · your entry here sets every level below",
-                "People in IRIS": len(hold) or "Vacant", "Key": hkey,
-                "Changes here": f'=COUNTA({lead_cols[0]}{r}:{lead_cols[-1]}{r})',
-                "Justification · IRIS and Market": (f"{rr['name']} in {dept if dept != 'Not yet held' else 'no department yet'} · type of work: {work}. "
-                                                    + (f"Held today: {held_txt}. " if held_txt else "Nobody holds this role here yet. ")
-                                                    + "Type VL, L, M, H or VH — or a number 0–100 — in a yellow cell on this row to re-weight every level of the role in this "
-                                                    "department at once; a level row's own entry wins over this row. Each level's IRIS and "
-                                                    "Market weightage, and why, is on its own row below.")}
+        work = f_["work"]
+        hkey = f"{f_['id']}|ROLE"
+        n_role = sum(v for (rid, _, _), v in at_row.items() if rid == f_["id"])
+        lv_list = sorted({lv for lv, _ in f_["rows"]}, key=lambda x: V.VAL[x])
+        held_txt = " · ".join(f"{lv} {ln + ' ' if ln != 'All' else ''}{at_row[(f_['id'], lv, ln)]}" for lv, ln in reversed(f_["rows"])
+                              if at_row[(f_["id"], lv, ln)])
+        vals = {"Job family": f_["fam"], "Role ID": f_["id"], "Role · sub-family": f_["name"], "Type of work": work, "Row": "ROLE",
+                "Level": f"{lv_list[0]}–{lv_list[-1]}" if len(lv_list) > 1 else lv_list[0], "Lane": "", "Band": "",
+                "Standard title at this level": "ROLE row · your entry here sets every level below", "People in IRIS": n_role or "Vacant",
+                "Key": hkey, "Changes here": f'=COUNTA({lead_cols[0]}{r}:{lead_cols[-1]}{r})',
+                "Justification · IRIS and Market": (f"{f_['name']} · {f_['fam']} · type of work: {work}. "
+                                                    + (f"Held today: {held_txt}. " if held_txt else "Nobody holds this role yet. ")
+                                                    + "Type VL, L, M, H or VH — or a number 0–100 — in a yellow cell on this row to re-weight "
+                                                    "every level of the role at once; a level row's own entry wins over this row. Each level's "
+                                                    "IRIS and Market weightage, and why, is on its own row below.")}
         xs = put_row(ws, r, cols, vals)
         for c_, h, dark, title in cols:
             x = ws.cell(r, c_)
             x.font = Y.font(9, True)
-            if title in ("WHERE", "ROLE AND LEVEL"):
+            if title == "ROLE AND LEVEL":
                 x.fill = PatternFill("solid", fgColor="D9E1F2")
             if title.startswith("WEIGHTAGE · LEADER") or h == "Leader's reason":
                 x.fill = Y.F_YEL
         ws.row_dimensions[r].height = 42
         hrow = r
         r += 1
-        for lv in rr["ladder"]:
-            rg = level_rg(lv, rr["tg"])
+        hk = hkey.replace('"', '""')
+        for lv, ln in f_["rows"]:
+            tg_ = row_tg(f_, ln)
+            rg = level_rg(lv, tg_)
             iris, mkt, dw, mk, why = W.get(rg, work)
-            lkey = f"{biz}|{dept}|{rr['id']}|{lv}"
-            lad_key[(biz, dept, k, lv)] = lkey
+            lkey = f"{f_['id']}|{lv}|{ln}"
+            lad_key[(fk, lv, ln)] = lkey
             f4 = R["f4"].get(lv, {})
-            vals = {"Business": biz, "Department": dept, "Type of work": work, "Role ID": rr["id"], "Role": rr["name"], "Job family": rr["fam"],
-                    "Track": rr["tg"], "Row": "level", "Level": lv, "Band": V.BAND_NAME.get(V.band(lv), ""),
-                    "Standard title at this level": rr["std"].get(lv, ""), "People in IRIS": here[lv] or "Vacant", "Key": lkey,
-                    "Justification · IRIS and Market": (f"At {lv} · ladder title {V.LEVEL_TITLE[lv][1 if rr['tg'] == 'Manager' else 0].replace('—', V.LEVEL_TITLE[lv][1])}: "
-                                                        f"{f4.get('What the role owns', '')} · span {f4.get('Span of control', '—')} · "
-                                                        f"experience {EXP_RANGE[lv][2]}.\n" + why)}
-            hk = hkey.replace('"', '""')
+            n_ = at_row[(f_["id"], lv, ln)]
+            ttl = V.LEVEL_TITLE[lv][1 if tg_ == "Manager" else 0]
+            vals = {"Job family": f_["fam"], "Role ID": f_["id"], "Role · sub-family": f_["name"], "Type of work": work, "Row": "level",
+                    "Level": lv, "Lane": ln, "Band": V.BAND_NAME.get(V.band(lv), ""), "Standard title at this level": title_at(f_, lv, ln),
+                    "People in IRIS": n_ or "Vacant", "Key": lkey,
+                    "Justification · IRIS and Market": (f"At {lv}{' · ' + ln + ' lane' if ln != 'All' else ''} · ladder title "
+                                                        f"{ttl if ttl != '—' else V.LEVEL_TITLE[lv][1]}: {f4.get('What the role owns', '')} · span "
+                                                        f"{f4.get('Span of control', '—')} · experience {EXP_RANGE[lv][2]}.\n" + why)}
             for pk, pn in PARAMS:
                 vals[f"IRIS · {pn}"] = iris[pk]
                 vals[f"Market · {pn}"] = mkt[pk]
@@ -639,7 +785,7 @@ def main(srcdir):
             if b:
                 xs["Level"].fill = PatternFill("solid", fgColor=Y.BAND[b])
             xs["Level"].font = Y.font(10, True)
-            if here[lv] == 0:
+            if n_ == 0:
                 xs["People in IRIS"].font = Y.font(9, False, "808080")
             ws.row_dimensions[r].height = 120
             r += 1
@@ -656,10 +802,9 @@ def main(srcdir):
     for c_, h, dark, title in cols:
         if title == "ENGINE":
             ws.column_dimensions[L(c_)].hidden = True
-    ws.freeze_panes = "F7"
+    ws.freeze_panes = "D7"
     ws.auto_filter.ref = f"A6:{L(len(cols))}{rl_end}"
     ws.sheet_view.zoomScale = 85
-    rl_rows = rl_end - rl_top + 1
 
     # ================================================================ Role Definitions
     ws = ws_rm
@@ -667,9 +812,9 @@ def main(srcdir):
              "Sheet 4 · Every role — held or vacant — with every level it runs through. Rating 3 Meets is the level as defined; 1 Well below is working at the "
              "level below on that parameter; 5 Well above is already working at the level above; 2 and 4 are half a level either side. Use these words when you rate on Talent Mapping. "
              "The weightage for each role and level is on sheet 3.", STAMP, width_cols=14)
-    Y.colour_key(ws, 4)
-    groups = [("ROLE", "1F3864", [("Role ID", 8), ("Role", 34), ("Job family", 22), ("Track", 10), ("Row", 7), ("Level", 7),
-                                  ("Standard title at this level", 30), ("People", 8)])]
+    legend(ws, 4)
+    groups = [("ROLE", "1F3864", [("Role ID", 8), ("Role · sub-family", 34), ("Job family", 22), ("Row", 7), ("Level", 7),
+                                  ("Standard titles at this level · IC / Manager", 34), ("People", 8)])]
     for pk, pn in PARAMS:
         groups.append((f"{pn.upper()} — rating 1 · 3 · 5 at this level · 2 and 4 sit between", "375623" if pk in ("L", "BI") else ("2E75B6" if pk in ("Exp", "Edu") else "843C0C"),
                        [(f"{pn} · 1 Well below", 26), (f"{pn} · 3 Meets", 30), (f"{pn} · 5 Well above", 26)]))
@@ -679,14 +824,14 @@ def main(srcdir):
     cat_by = collections.defaultdict(list)
     for c in M["cat"]:
         cat_by[(J.text(c[1]), J.text(c[2]), J.text(c[3]))].append(c)
-    for k in sorted(all_keys, key=lambda x: roles[x]["id"]):
-        rr = roles[k]
-        rr["row"] = r
-        held_n = collections.Counter(new[i] for i in rr["people"])
-        vals = {"Role ID": rr["id"], "Role": rr["name"], "Job family": rr["fam"], "Track": rr["tg"], "Row": "ROLE",
-                "Level": (f"{rr['ladder'][-1]}–{rr['ladder'][0]}" if rr["ladder"] else " · ".join(sorted(held_n))),
-                "People": len(rr["people"]) or "Vacant",
-                "Standard title at this level": (f"Type of work: {rr['work']}" if rr["ladder"] else "Consultant · outside the ladder")}
+    for fk in fw_keys:
+        f_ = fw[fk]
+        held_n = collections.Counter(new[i] for i in f_["people"])
+        lv_list = sorted({lv for lv, _ in f_["rows"]}, key=lambda x: -V.VAL[x])
+        vals = {"Role ID": f_["id"], "Role · sub-family": f_["name"], "Job family": f_["fam"], "Row": "ROLE",
+                "Level": (f"{lv_list[-1]}–{lv_list[0]}" if lv_list else " · ".join(sorted(held_n))),
+                "People": len(f_["people"]) or "Vacant",
+                "Standard titles at this level · IC / Manager": (f"Type of work: {f_['work']}" if lv_list else "Consultants · outside the ladder")}
         put_row(ws, r, cols, vals)
         for c_, h, dark, title in cols:
             x = ws.cell(r, c_)
@@ -696,11 +841,13 @@ def main(srcdir):
         ws.row_dimensions[r].height = 30
         hrow = r
         r += 1
-        for lv in rr["ladder"]:
-            cats = cat_by.get((rr["fam"], rr["sub"], lv), [])
-            d = descriptors(R, rr["fam"], lv, cats, cj, rr["work"])
-            vals = {"Role ID": rr["id"], "Role": rr["name"], "Job family": rr["fam"], "Track": rr["tg"], "Row": "level", "Level": lv,
-                    "Standard title at this level": rr["std"].get(lv, ""), "People": held_n[lv] or "Vacant"}
+        for lv in lv_list:
+            cats = cat_by.get((f_["fam"], f_["sub"], lv), [])
+            d = descriptors(R, f_["fam"], lv, cats, cj, f_["work"])
+            lanes_here = [ln for lv_, ln in f_["rows"] if lv_ == lv]
+            ttl = "\n".join(f"{ln}: {title_at(f_, lv, ln)}" if ln != "All" else title_at(f_, lv, ln) for ln in lanes_here)
+            vals = {"Role ID": f_["id"], "Role · sub-family": f_["name"], "Job family": f_["fam"], "Row": "level", "Level": lv,
+                    "Standard titles at this level · IC / Manager": ttl, "People": held_n[lv] or "Vacant"}
             for pk, pn in PARAMS:
                 vals[f"{pn} · 1 Well below"], vals[f"{pn} · 3 Meets"], vals[f"{pn} · 5 Well above"] = d[pk]
             xs = put_row(ws, r, cols, vals)
@@ -726,37 +873,49 @@ def main(srcdir):
              "'—' = the role does not run to that level. Sources on the last sheet.", STAMP, width_cols=16)
     sup_path = os.path.join(J.ROOT, "IRIS_JA_Final_v1.15", "IRIS_JA_2_HR_Super_Master_v1.15.xlsx")
     blocks_r3 = MK.r3_blocks(sup_path)
-    groups = [("ROLE", "1F3864", [("Role ID", 8), ("Role", 30), ("Job family", 20), ("Track", 9), ("Row", 14)]),
+    groups = [("ROLE", "1F3864", [("Role ID", 8), ("Role · sub-family", 30), ("Job family", 20), ("Lanes", 12), ("Row", 14)]),
               ("THE JOURNEY — A1 Intern to E2 Chief Executive", "375623", [(lv, 22) for lv in MK.LEVEL_COLS]),
               ("WEIGHTAGE AT THE ROLE'S MAIN LEVEL", "806000", [("Main level", 7)] + [(f"Weightage · {k}", 6) for k in PKEYS]),
               ("EVIDENCE", "3A3838", [("Professional standard", 30), ("Sources", 34)])]
     cols = headers(ws, groups)
     r = 7
-    for k in sorted(all_keys, key=lambda x: roles[x]["id"]):
-        rr = roles[k]
-        if not rr["ladder"]:
+    for fk in fw_keys:
+        f_ = fw[fk]
+        if not f_["rows"]:
             continue
-        held_n = collections.Counter(new[i] for i in rr["people"])
-        main_lv = held_n.most_common(1)[0][0] if held_n else rr["ladder"][len(rr["ladder"]) // 2]
-        if main_lv not in rr["ladder"]:
-            main_lv = rr["ladder"][len(rr["ladder"]) // 2]
-        iris_w, mkt_w, _, _, _ = W.get(level_rg(main_lv, rr["tg"]), rr["work"])
-        dept_main = collections.Counter(J.text(by_i[i]["tm"][H["Department"]]) for i in rr["people"]).most_common(1)
-        fam_r3 = "Executive Leadership" if rr["fam"] == V.ENT_FAMILY else rr["fam"]
-        blk, mrows = MK.market_rows(blocks_r3, fam_r3, dept_main[0][0] if dept_main else "", rr["tg"] == "Manager")
-        base = {"Role ID": rr["id"], "Role": rr["name"], "Job family": rr["fam"], "Track": rr["tg"], "Main level": main_lv}
+        lv_set = {lv for lv, _ in f_["rows"]}
+        held_n = collections.Counter(new[i] for i in f_["people"] if new[i] in lv_set)
+        main_lv = held_n.most_common(1)[0][0] if held_n else sorted(lv_set, key=lambda x: V.VAL[x])[len(lv_set) // 2]
+        main_ln = next(ln for lv_, ln in f_["rows"] if lv_ == main_lv)
+        iris_w, mkt_w, _, _, _ = W.get(level_rg(main_lv, row_tg(f_, main_ln)), f_["work"])
+        dept_main = collections.Counter(J.text(by_i[i]["tm"][H["Department"]]) for i in f_["people"]).most_common(1)
+        fam_r3 = "Executive Leadership" if f_["fam"] == V.ENT_FAMILY else f_["fam"]
+        blk, mrows = MK.market_rows(blocks_r3, fam_r3, dept_main[0][0] if dept_main else "", False)
+        mgr_rows = [(l_, v_) for l_, v_ in mrows if "manager" in l_.lower()]
+        lanes_txt = " · ".join(t_ for t_ in ("IC", "Manager") if t_ in f_["lanes"])
+        base = {"Role ID": f_["id"], "Role · sub-family": f_["name"], "Job family": f_["fam"], "Lanes": lanes_txt, "Main level": main_lv}
         iv = dict(base, Row="IRIS")
         mv_ = dict(base, Row="Market benchmark")
         for lv in MK.LEVEL_COLS:
-            if lv not in rr["ladder"]:
+            if lv not in lv_set:
                 iv[lv] = mv_[lv] = "—"
                 continue
             n_ = held_n[lv]
-            iv[lv] = f"{rr['std'].get(lv, '')}\n{EXP_RANGE[lv][2]} · {n_ if n_ else 'vacant'}{' people' if n_ > 1 else (' person' if n_ == 1 else '')}"
+            lanes_here = [ln for lv_, ln in f_["rows"] if lv_ == lv]
+            ttl = "\n".join(f"{ln}: {title_at(f_, lv, ln)}" if ln != "All" else title_at(f_, lv, ln) for ln in lanes_here)
+            iv[lv] = f"{ttl}\n{EXP_RANGE[lv][2]} · {n_ if n_ else 'vacant'}{' people' if n_ > 1 else (' person' if n_ == 1 else '')}"
             titles = []
             for lab, vals in mrows:
-                if lv in vals and len(titles) < 3:
+                if lv in vals and len(titles) < 3 and "manager" not in lab.lower():
                     titles.append(f"{short_lab}: {vals[lv]}" if (short_lab := MK.short_label(lab)) else vals[lv])
+            if "Manager" in lanes_here or (V.band(lv) in ("D", "E", "C+", "B+")):
+                for lab, vals in mgr_rows[:1]:
+                    if lv in vals:
+                        titles.append(f"Manager track: {vals[lv]}")
+            if not titles:
+                for lab, vals in mrows:
+                    if lv in vals and len(titles) < 2:
+                        titles.append(f"{MK.short_label(lab)}: {vals[lv]}")
             cr = R["cross"].get(lv, [])
             mr = R["exp"].get(lv, {}).get("Market range") or ""
             tail = " · ".join(x for x in (f"Radford / Mercer {cr[1]}" if len(cr) > 1 and cr[1] else "",
@@ -784,7 +943,7 @@ def main(srcdir):
                     b = Y.band_of(h)
                     if b:
                         x.fill = PatternFill("solid", fgColor=Y.BAND[b])
-            ws.row_dimensions[r].height = 64 if rowv is iv else 96
+            ws.row_dimensions[r].height = 110
             r += 1
     ws.freeze_panes = "F7"
     ws.auto_filter.ref = f"A6:{L(len(cols))}{r - 1}"
@@ -892,10 +1051,10 @@ def main(srcdir):
     ws = ws_tm
     Y.banner(ws, "Talent Mapping — every person, top down",
              "Sheet 7 · Read left to right: who they are → what they told us in the survey and what their manager sent → where IRIS placed "
-             "them → what the market says → how much each parameter counts · IRIS, Market, Leader, read live from their department, role "
-             "and level on sheet 3 → how they rate · IRIS, then yours → your proposed level and band. Blank = nothing received. "
+             "them → what the market says → how much each parameter counts · IRIS, Market, Leader, read live from their role, level "
+             "and lane on sheet 3 → how they rate · IRIS, then yours → your proposed level and band. Blank = nothing received. "
              "Yellow = yours. Your columns stay blank until you give an input.", STAMP, width_cols=16)
-    Y.colour_key(ws, 4)
+    legend(ws, 4)
     groups = [
         ("WHO", "1F3864", [("Business", 10), ("Department", 18), ("Layer from the CEO", 7), ("Emp ID", 12), ("Employee name", 22),
                            ("Current designation", 24), ("Reporting manager", 20), ("Manager Emp ID", 12), ("Total exp. · yrs", 8),
@@ -903,7 +1062,7 @@ def main(srcdir):
         ("WHAT THEY TOLD US — blank = not received", "7030A0", [("Survey · questions answered", 9), (SURVEY_COL, 70), ("KRAs from the manager", 44),
                                                                   ("Performance · rating · potential · 9-box", 24), ("Evidence used for the ratings", 40),
                                                                   ("All their data ▸", 10), ("Person card ▸", 10)]),
-        ("IRIS PLACEMENT", "C00000", [("Job family", 20), ("Sub-family", 22), ("Role ID", 8), ("Role", 30), ("IRIS proposed level", 9),
+        ("IRIS PLACEMENT", "C00000", [("Job family", 20), ("Role ID", 8), ("Role · sub-family", 26), ("Lane", 9), ("IRIS proposed level", 9),
                                       ("IRIS proposed band", 20), ("Standard title for the role and level", 28), ("Title change", 20),
                                       ("How IRIS placed them", 40), ("Structure flag", 30)]),
         ("MARKET", "3A3838", [("Market level · published weights", 9), ("Experience vs the level · market", 30),
@@ -917,15 +1076,17 @@ def main(srcdir):
         ("LEADER PROPOSAL — blank until you give an input", "C00000", [("Leader override · any level", 10), ("Score shift · levels", 9),
                                                                        ("Leader proposed level", 10),
                                                                        ("Leader proposed band", 20), ("Move vs IRIS", 12),
-                                                                       ("Level in force · leader if given, else IRIS", 10),
+                                                                       ("Level in force · after the band rule", 10),
+                                                                       ("Band in force", 20), ("Band rule · live", 30),
                                                                        ("Manager check · live", 24), ("Leader comment", 30)]),
         ("ENGINE", "595959", [(f"imp {k}", 5) for k in PKEYS] + [(f"mv {k}", 5) for k in PKEYS] +
-         [("Inputs", 5), ("Net live", 6), ("Anchor · IRIS as built", 6), ("Ladder key", 12), ("Role key", 12)]),
+         [("Inputs", 5), ("Net live", 6), ("Anchor · IRIS as built", 6), ("Ladder key", 12), ("Role key", 12),
+          ("Level before the band rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6)]),
     ]
     cols = headers(ws, groups)
     col = {h: L(c_) for c_, h, _, _ in cols}
     last = 6 + len(order)
-    E, INF = col["Emp ID"], col["Level in force · leader if given, else IRIS"]
+    E, INF = col["Emp ID"], col["Level in force · after the band rule"]
     raw_row = {i: 7 + n for n, i in enumerate(order)}
     tm_row = {}
     for n, i in enumerate(order):
@@ -939,7 +1100,8 @@ def main(srcdir):
         perf = ""
         if s8 is not None:
             hh = M["s8_hdr"]
-            perf = " · ".join(f"{h}: {J.text(s8[hh.index(h)])}" for h in ("Latest rating", "Potential", "9-box") if J.has(s8[hh.index(h)]))
+            perf = " · ".join(f"{h}: {J.text(s8[hh.index(h)])}" for h in ("Latest rating", "Potential", "9-box")
+                              if J.has(s8[hh.index(h)]) and not RW.PLACEHOLDER.match(J.text(s8[hh.index(h)])))
         kras = "\n".join(f"{lab}: {v}" for lab, v in (("Annual · set by manager", k[0]), ("Quarterly", k[1]), ("Self-reported", k[2]))
                          if J.has(v) and not J.text(v).startswith(P.MISSING_KRA))
         ev = []
@@ -970,6 +1132,10 @@ def main(srcdir):
         else:
             how = (f"Evidence level {model} · moved {'down' if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else 'up'} to {lv} so that no reportee shares "
                    f"a band with their manager, with the fewest moves across IRIS" + (" · pay and title protected for one cycle" if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else ""))
+        if i in line_changes:
+            how += (f" · reports to {by_i[line_changes[i][1]]['name']} from this model on, as CARBON's own Mapping Master proposes, instead of "
+                    f"{by_i[line_changes[i][0]]['name']}: both lead a department in Band D, and the line under them is too deep for the "
+                    "bands to separate them otherwise")
         if p["i"] in changed:
             how += f" · {'Band E · Enterprise Leadership' if changed[p['i']][2] == V.ENT_FAMILY else 'department head · Executive Leadership · Business Head'}"
         m = org.mgr[i]
@@ -1004,28 +1170,34 @@ def main(srcdir):
             span_txt = f"{reps} direct reports · norm {R['f4'].get(lv, {}).get('Span of control', '—')}"
         cr = R["cross"].get(lv, [])
         vals = {
-            "Business": p["biz"], "Department": J.text(tm[H["Department"]]), "Layer from the CEO": depth[i], "Emp ID": p["emp"],
+            "Business": p["biz"], "Department": blank_if_none(tm[H["Department"]]), "Layer from the CEO": depth[i], "Emp ID": p["emp"],
             "Employee name": p["name"], "Current designation": J.text(tm[H["Current designation"]]),
-            "Reporting manager": J.text(tm[H["Reporting manager"]]), "Manager Emp ID": links[1] if links[1] not in ("—", "Not in this file") else "",
+            "Reporting manager": (f"{by_i[line_changes[i][1]]['name']} · was {J.text(tm[H['Reporting manager']])}" if i in line_changes
+                                  else blank_if_none(tm[H["Reporting manager"]])),
+            "Manager Emp ID": (by_i[line_changes[i][1]]["emp"] if i in line_changes else
+                               (links[1] if links[1] not in ("—", "Not in this file") else "")),
             "Total exp. · yrs": tm[H["Total exp. · yrs"]] if yrs is not None else "", "Qualification": J.text(tm[H["Qualification"]]) if q is not None else "",
             "Current level · as is": J.text(tm[H["Current level"]]) if "Not in current" not in J.text(tm[H["Current level"]]) else "",
             "Survey · questions answered": f"{sv[0]} of 20" if sv[0] else "", SURVEY_COL: shared,
             "KRAs from the manager": short(kras, 500) if kras else "", "Performance · rating · potential · 9-box": perf,
             "Evidence used for the ratings": "\n".join(ev), "All their data ▸": "Open ▸", "Person card ▸": "Card ▸",
-            "Job family": rr["fam"], "Sub-family": rr["sub"], "Role ID": rr["id"], "Role": rr["name"], "IRIS proposed level": lv,
+            "Job family": rr["fam"], "Role ID": fw[p["fw"]]["id"], "Role · sub-family": rr["sub"],
+            "Lane": (lane_of(fw[p["fw"]], lv, rr["tg"]) or "Consultant").replace("All", "Shared"), "IRIS proposed level": lv,
             "IRIS proposed band": V.BAND_NAME.get(V.band(lv), ""), "Standard title for the role and level": std, "Title change": title_change,
             "How IRIS placed them": how, "Structure flag": sflag, "Market level · published weights": mlev,
             "Experience vs the level · market": exp_txt, "Span vs the norm": span_txt,
             "Radford / Mercer · SFIA 9": f"{cr[1]} · SFIA {cr[3]}" if len(cr) > 3 else "",
         }
         dept = J.text(tm[H["Department"]])
-        lkey = lad_key.get((p["biz"], dept, p["role"], lv), "")
+        f_ = fw[p["fw"]]
+        ln_ = lane_of(f_, lv, rr["tg"])
+        lkey = lad_key.get((p["fw"], lv, ln_), "") if ln_ else ""
         vals["Ladder key"] = lkey
-        vals["Role key"] = f"{p['biz']}|{dept}|{rr['id']}|ROLE" if lkey else ""
+        vals["Role key"] = f"{f_['id']}|ROLE" if lkey else ""
         lk, hk = f'${col["Ladder key"]}{r}', f'${col["Role key"]}{r}'
         lad_w = {}
         if lkey:
-            lad_w = W.get(level_rg(lv, rr["tg"]), R["dept_type"].get((p["biz"], dept)) or rr["work"])[0]
+            lad_w = W.get(level_rg(lv, row_tg(f_, ln_)), f_["work"])[0]
         anchor = round(SC.net(lad_w, iris_r, PKEYS), 6) if lkey else 0
         for pk, pn in PARAMS:
             ix = lambda rng, kk: f'INDEX({rng},MATCH({kk},RL_KEY,0))'
@@ -1061,14 +1233,26 @@ def main(srcdir):
                                         f'"Band D · Business leadership","Band E · Enterprise leadership"),"Band X · Consultant"))')
         vals["Move vs IRIS"] = (f'=IF({lp}{r}="","",IF({lp}{r}={iris_c}{r},"• Same",IF(INDEX(B_VAL,MATCH({lp}{r},B_LVL,0))>'
                                 f'INDEX(B_VAL,MATCH({iris_c}{r},B_LVL,0)),"▲ Up","▼ Down")))')
-        vals["Level in force · leader if given, else IRIS"] = f'=IF({lp}{r}<>"",{lp}{r},{iris_c}{r})'
         mg = col["Manager Emp ID"]
-        mf = f'INDEX(${INF}$7:${INF}${last},MATCH(${mg}{r},${E}$7:${E}${last},0))'
+        rw, mi, cp = col["Level before the band rule"], col["Manager's level in force"], col["Highest level allowed"]
+        vals["Level before the band rule"] = f'=IF({lp}{r}<>"",{lp}{r},{iris_c}{r})'
+        vals["Manager's level in force"] = f'=IF(${mg}{r}="","",IFERROR(INDEX(${INF}$7:${INF}${last},MATCH(${mg}{r},${E}$7:${E}${last},0)),""))'
+        vals["Highest level allowed"] = (f'=IF(OR({mi}{r}="",LEFT({mi}{r},1)="X",LEFT({rw}{r},1)="X"),"",'
+                                         f'IFERROR(INDEX(IF(OR({rw}{r}="B+",{rw}{r}="C+"),CAP_PC,CAP_STD),MATCH({mi}{r},B_LVL,0)),""))')
+        vals["Level in force · after the band rule"] = (f'=IF({cp}{r}="",{rw}{r},IF(INDEX(B_VAL,MATCH({rw}{r},B_LVL,0))>'
+                                                        f'INDEX(B_VAL,MATCH({cp}{r},B_LVL,0)),{cp}{r},{rw}{r}))')
+        vals["Band in force"] = (f'=IFERROR(CHOOSE(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0)),"Band A · Practitioner",'
+                                 f'"Band B · Specialist / Manager","B+ · Player-Coach","Band C · Principal / Head","C+ · Player-Coach",'
+                                 f'"Band D · Business leadership","Band E · Enterprise leadership"),"Band X · Consultant")')
+        vals["Band rule · live"] = (f'=IF({INF}{r}={rw}{r},"","Held at "&{INF}{r}&" — the manager is at "&{mi}{r}&'
+                                    '" and a reportee stays in a lower band")')
+        mf = f'{mi}{r}'
         vals["Manager check · live"] = (
-            f'=IFERROR(IF(${mg}{r}="","—",IF(OR(LEFT({INF}{r},1)="X",LEFT({mf},1)="X"),"—",'
+            f'=IFERROR(IF(OR(${mg}{r}="",{mf}=""),"—",IF(OR(LEFT({INF}{r},1)="X",LEFT({mf},1)="X"),"—",'
             f'IF(AND(LEFT({INF}{r},1)="E",LEFT({mf},1)="E"),"Exception · Band E",'
+            f'IF(AND({cp}{r}="",LEFT({mf},1)="A"),"⚠ No band left below an A-level manager — a structure decision",'
             f'IF(INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))>=INDEX(B_VAL,MATCH({mf},B_LVL,0)),"⚠ At or above the manager",'
-            f'IF(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0))=INDEX(B_RANK,MATCH({mf},B_LVL,0)),"⚠ Same band as the manager","OK"))))),"—")')
+            f'IF(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0))=INDEX(B_RANK,MATCH({mf},B_LVL,0)),"⚠ Same band as the manager","OK")))))),"—")')
         xs = put_row(ws, r, cols, vals)
         for h, x in xs.items():
             if h.startswith(("Weightage", "Rating")):
@@ -1080,7 +1264,7 @@ def main(srcdir):
                 x.number_format = "+0.00;-0.00;0.00"
                 x.alignment = Alignment(horizontal="center", vertical="top")
                 x.font = Y.font(10, True)
-            if h in ("IRIS proposed level", "Leader proposed level", "Level in force · leader if given, else IRIS", "Market level · published weights"):
+            if h in ("IRIS proposed level", "Leader proposed level", "Level in force · after the band rule", "Market level · published weights"):
                 x.font = Y.font(11, True)
                 x.alignment = Alignment(horizontal="center", vertical="top")
                 b = Y.band_of(vals.get(h, ""))
@@ -1124,9 +1308,12 @@ def main(srcdir):
              "potential, 9-box, succession, training) and the CARBON scorecard. Where two files disagree, the newest comes first "
              "and the others follow after ‖. Personal fields are left out. Blank = not received. ◂ Back returns to the person "
              "on Talent Mapping. People in the source files but not yet in the architecture are at the bottom.", STAMP, width_cols=16)
-    Y.colour_key(ws, 4)
+    legend(ws, 4)
     long_ = {"SURVEY", "MM", "CARBON"}
     raw_groups = [("PERSON", "1F3864", [("◂ Back", 8), ("Status", 12)])]
+    if simple:   # the Simplified file keeps what was received; the earlier versions' analysis stays in the Master
+        raw_cols = [c for c in raw_cols if not c[0].startswith("AN") and c[0] != "OLD"]
+        raw_groups_ = [g for g in raw_groups_ if not g[0].startswith("AN") and g[0] != "OLD"]
     for g, title, dark in raw_groups_:
         cs = [(h, 40 if g in long_ and not h.startswith(("Survey", "Department", "Role Family", "Sub-Family", "Category",
                                                         "Current ", "New ", "Change", "Career", "Recommended"))
@@ -1209,10 +1396,11 @@ def main(srcdir):
     sections = [
         ("WHO", ["Business", "Department", "Emp ID", "Employee name", "Current designation", "Reporting manager", "Total exp. · yrs",
                  "Qualification", "Current level · as is"]),
-        ("IRIS PLACEMENT", ["Job family", "Sub-family", "Role", "IRIS proposed level", "IRIS proposed band", "Standard title for the role and level",
+        ("IRIS PLACEMENT", ["Job family", "Role · sub-family", "Lane", "IRIS proposed level", "IRIS proposed band", "Standard title for the role and level",
                             "Title change", "How IRIS placed them", "Structure flag"]),
         ("MARKET", ["Market level · published weights", "Experience vs the level · market", "Span vs the norm", "Radford / Mercer · SFIA 9"]),
-        ("LEADER PROPOSAL", ["Score shift · levels", "Leader proposed level", "Leader proposed band", "Move vs IRIS", "Manager check · live", "Leader comment"]),
+        ("LEADER PROPOSAL", ["Score shift · levels", "Leader proposed level", "Leader proposed band", "Move vs IRIS",
+                             "Level in force · after the band rule", "Band in force", "Band rule · live", "Manager check · live", "Leader comment"]),
         ("WHAT THEY TOLD US", ["Survey · questions answered", SURVEY_COL, "KRAs from the manager", "Performance · rating · potential · 9-box",
                                "Evidence used for the ratings"]),
     ]
@@ -1274,11 +1462,29 @@ def main(srcdir):
     url = re.compile(r"https?://[^\s;,]+")
     first_words = ("ID", "Grade", "Ladder / company", "Job family", "Database / method", "Website", "IRIS level", "Method", "Benchmark",
                    "ID · Company", "Role group", "Band", "Factor")
+    def compact(rows_):
+        """Drop the spacer columns the source sheet's merged cells left behind, table by table."""
+        out, block = [], []
+
+        def flush():
+            if block:
+                used = sorted({j for b_ in block for j, x in enumerate(b_) if x not in (None, "")})
+                out.extend([[b_[j] if j < len(b_) else None for j in used] for b_ in block])
+                block.clear()
+        for row_ in rows_:
+            c0_ = [x for x in row_ if x not in (None, "")]
+            if not c0_ or (len(c0_) == 1 and re.match(r"^(R\d|M\d|W\d|[A-Z]\d+\.)", J.text(c0_[0]))):
+                flush()
+                out.append([x for x in row_ if x not in (None, "")][:1] or [])
+            else:
+                block.append(list(row_))
+        flush()
+        return out
     for title, rows_ in MK.reference_sections(sup_path):
         Y.header(ws.cell(r, 1, title), Y.NAVY, 11)
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=10)
         r += 2
-        for row_ in rows_:
+        for row_ in compact(rows_):
             vals_ = [x for x in row_]
             while vals_ and vals_[-1] in (None, ""):
                 vals_.pop()
@@ -1290,6 +1496,7 @@ def main(srcdir):
             c0 = [x for x in vals_ if x not in (None, "")]
             sec = len(c0) == 1 and re.match(r"^(R\d|M\d|W\d|[A-Z]\d+\.)", J.text(c0[0]))
             hdr_ = J.text(vals_[0]) in first_words and len(c0) >= 3
+            note_ = len(c0) == 1 and not sec and vals_[0] not in (None, "") and len(J.text(c0[0])) > 60
             for j, v in enumerate(vals_[:20], 1):
                 v = J.text(v) if v not in (None, "") else None
                 x = ws.cell(r, j, v)
@@ -1303,9 +1510,13 @@ def main(srcdir):
                     if m:
                         x.hyperlink = m.group(0)
                         x.font = Y.font(9, False, "0563C1", underline="single")
+            if note_:
+                ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
+                ws.cell(r, 1).alignment = Alignment(wrap_text=True, vertical="top")
+                ws.row_dimensions[r].height = Y.est_height([(J.text(c0[0]), 230)], base=13)
             r += 1
         r += 1
-    Y.header(ws.cell(r, 1, "R7. Method sources for the v2.1 five-step weightage and rating scales"), Y.NAVY, 11)
+    Y.header(ws.cell(r, 1, "R7. Method sources for the five-step scales and the v2.2 framework"), Y.NAVY, 11)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=10)
     r += 1
     for j, h in enumerate(["ID", "Source", "Type", "What it contributed", "Link / where", "Grade"], 1):
@@ -1323,6 +1534,14 @@ def main(srcdir):
         ws.column_dimensions[c_].width = w
     ws.sheet_view.zoomScale = 85
 
+    if simple:
+        wb.remove(ws_rm)
+        wb.remove(ws_mb)
+        for c_, h, dark, title in tm_cols:   # fold away the reference columns; the engine and the inputs stay
+            if title.startswith(("MARKET", "WEIGHTAGE · IRIS BASE", "WEIGHTAGE · MARKET")):
+                ws_tm.column_dimensions[L(c_)].outlineLevel = 1
+                ws_tm.column_dimensions[L(c_)].hidden = True
+
     # ================================================================ How it works
     ws = ws_how
     Y.banner(ws, "IRIS Job Architecture Model — how it works", "Read this first · five steps, in the order they happened.", STAMP, back=False, width_cols=8)
@@ -1333,13 +1552,14 @@ def main(srcdir):
                          "and the managers' talent mapping: KRAs, rating, potential, 9-box. Where nothing came back, the cell is blank."),
         ("2 · We built the ladder", "There was no level framework. From the answers and the market we built one ladder of 12 levels in five "
                                     "bands, plus two Player-Coach steps. Each level has its own experience range, scope and span, so the "
-                                    "levels do not overlap · sheet 2. Then a ladder for every role in every department, from A1 "
-                                    "Intern to the top of the role, including roles and levels nobody holds yet, each with its "
-                                    "weightage and the reason for it · sheet 3."),
+                                    "levels do not overlap · sheet 2. Then a ladder for every role — a role is a sub-family — from A1 "
+                                    "Intern to E2, with IC and Manager lanes in Bands B and C, including roles and levels nobody holds "
+                                    "yet, each with its weightage and the reason for it · sheet 3."),
         ("3 · We placed everyone", "Each person got a job family, a sub-family, a role and a level from the evidence. Then we moved the fewest "
                                    f"people needed so that no one shares a band with their manager: {moved_dn} down, pay and title protected, "
-                                   f"and {moved_up} up. Where a reporting chain is deeper than the bands, we flag it for a structure "
-                                   f"decision instead of forcing a level: {len(flag)} cases."),
+                                   f"and {moved_up} up — including managers who still deliver taking the Player-Coach step B+ or C+ where "
+                                   f"a reporting chain is deep. {len(line_changes)} reporting line follows CARBON's own recommended "
+                                   f"structure. Result: no manager and reportee share a band; {len(flag)} structure flags."),
         ("4 · We checked the market", "Every parameter's weight is set against published job-evaluation methods — Korn Ferry Hay, Mercer "
                                       "IPE and five public plans — and shown in five steps, VL to VH, with the numbers behind it · sheet 6. "
                                       "Levels map to Radford / Mercer codes, SFIA and peer experience ranges; every role's journey, IRIS against the "
@@ -1359,16 +1579,27 @@ def main(srcdir):
                                 "3 Meets · 4 Above · 5 Well above — already works at the level above. Each step is half a level: −1, −½, "
                                 "0, +½, +1."),
         ("Weightage · where it comes from", "In use for a person = their own weightage typed on sheet 7; if blank, the leader's entry on their "
-                                            "level row on sheet 3; if blank, the leader's entry on their role's ROLE row in the department; if "
+                                            "level row on sheet 3; if blank, the leader's entry on their role's ROLE row; if "
                                             "blank, the IRIS base. HR can change the IRIS base on sheet 3 — everyone at that role and level is "
                                             "re-scored at once. Market is shown beside it for reference."),
         ("The model in one line", "Weighted rating = Σ share × rating move. IRIS's placement is the anchor: the weighted rating with IRIS's "
                                   "ratings and IRIS's weightage as built. Change any weightage or rating and the shift = new weighted rating "
                                   "− anchor. Half a level or more moves the person one level; one and a half, two levels; at most two either "
                                   "way, along their own ladder. The band follows the level."),
+        ("A role is a sub-family", "Each role is a sub-family — what the person does — on one shared ladder of levels, the way job "
+                                   "architecture is built in practice: families and sub-families are separate from levels, and the "
+                                   "levels mean the same in every family (S78, S80). In Bands B and C a role has two lanes, IC and "
+                                   "Manager, the dual career path (S79); the market weighs them differently, so each lane has its own "
+                                   "weightage. Band A, the Player-Coach steps and Bands D and E have one path."),
+        ("No overlap in a team", "A reportee always sits in a lower band than their manager; only the CEO and the Chief Officers share "
+                                 "Band E. Where a reporting chain is deeper than the bands, the manager in the middle takes the "
+                                 "Player-Coach step B+ or C+ — the player/coach manager who still delivers (S75). One line was too deep "
+                                 "even so: it follows the reporting line CARBON's own mapping master proposes. The rule also works live: "
+                                 "if a leader moves a manager down, their reportees are held in the band below and flagged."),
         ("The seven parameters", "Complexity & Expertise · Autonomy & Decision · Accountability & Impact · Leadership & Strategy · "
                                  "Business Impact · Experience · Education."),
-        ("Colours", "Yellow = yours to fill · red = a structure decision · orange = a title to align · band colours on levels."),
+        ("Colours", "Yellow = yours to fill · blue = the IRIS base, which HR may edit · red = a structure decision or a warning · "
+                    "orange = a title to align · band colours on levels."),
         ("Privacy", "HR and business leaders only. Personal fields are never written; pay is not in this file."),
     ]
     r = 5
@@ -1394,13 +1625,27 @@ def main(srcdir):
     for c in "BCDEFGH":
         ws.column_dimensions[c].width = 18
 
+    for ws_ in wb.worksheets:   # the banner's ◂ Start link goes to this workbook's first sheet
+        for x in ws_[1]:
+            if x.hyperlink is not None and "Framework & Model" in str(x.hyperlink.target or x.hyperlink.location or ""):
+                x.hyperlink = f"#{Q(S_HOW)}!A1"
+    if simple:   # sheet numbers in the titles and the guide follow the Simplified file's own order
+        sub_ = lambda m: f"{m.group(1)} {RENUMBER.get(m.group(2), m.group(2))}"
+        for ws_ in wb.worksheets:
+            if ws_.title == S_REF:
+                continue
+            last_r = ws_.max_row if ws_.title == S_HOW else 6
+            for row_ in ws_.iter_rows(min_row=1, max_row=last_r):
+                for x in row_:
+                    if isinstance(x.value, str) and not x.value.startswith("=") and re.search(r"[Ss]heet \d", x.value):
+                        x.value = re.sub(r"([Ss]heet) (\d)\b", sub_, x.value)
     wb.active = 0
     wb.calculation.fullCalcOnLoad = True
     wb.save(OUTFILE)
     work = os.path.join(os.environ.get("JA_WORK", "/tmp"), "ja_model")
     os.makedirs(work, exist_ok=True)
     n_f, errors = X.cache_values(OUTFILE, work)
-    print(f"Wrote {OUTFILE}: people {len(order)} · roles {len(roles)} · moved down {moved_dn} up {moved_up} · structure flags {len(flag)} · "
+    print(f"Wrote {OUTFILE}: people {len(order)} · roles {len(fw)} · moved down {moved_dn} up {moved_up} · structure flags {len(flag)} · "
           f"title changes {sum(1 for i in order if std_title(roles[by_i[i]['role']], new[i], by_i[i]['tm'][H['Final designation']], by_i[i]['tm'][H['Track']], J.text(by_i[i]['tm'][H['FINAL LEVEL']]))[1])} · "
           f"formulas {n_f} · errors {len(errors)}")
     if errors:
@@ -1408,4 +1653,5 @@ def main(srcdir):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    for simple_ in (False, True):
+        main(sys.argv[1], simple_)

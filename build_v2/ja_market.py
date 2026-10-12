@@ -31,6 +31,27 @@ METHOD_SOURCES = [
     ("S74", "ILO / ITCILO — gender-neutral job evaluation for equal pay: factors, sub-factors and weighting",
      "International standard-setter", "Factors, sub-factors and weighting in point-factor job evaluation",
      "https://www.itcilo.org/courses/closing-gender-gap-ilo-approach-gender-neutral-job-evaluation-equal-pay", "Secondary"),
+    ("S75", "McKinsey — How to identify the right spans of control for your organization", "Consulting research",
+     "Five manager archetypes from player/coach to coordinator; the player/coach carries real individual work. Basis for opening the "
+     "B+ and C+ Player-Coach steps to managers who still deliver, and for span norms",
+     "https://www.mckinsey.com/capabilities/people-and-organization/our-insights/how-to-identify-the-right-spans-of-control-for-your-organization",
+     "Secondary"),
+    ("S76", "Deloitte — Spans and layers for the modern organization", "Consulting research",
+     "No single right span or number of layers: spans are flagged against norms, never forced",
+     "https://www2.deloitte.com/us/en/pages/human-capital/articles/spans-and-layers-for-modern-organization.html", "Secondary"),
+    ("S77", "Mercer — International Position Evaluation (IPE): Impact, Communication, Innovation, Knowledge, Risk",
+     "Job-evaluation method", "Factor definitions behind the seven IRIS parameters; knowledge includes people-management skill",
+     "https://www.mercer.com/en-us/solutions/talent-and-rewards/job-architecture/job-evaluation-ipe", "Primary"),
+    ("S78", "Payscale — Job architecture quick guide", "Practitioner guide",
+     "Families and sub-families are separate from levels; levels are defined once and used the same way across families — the basis "
+     "for a role = sub-family on one shared ladder", "https://www.payscale.com/content/quick-guide/job-architecture-quick-guide.pdf",
+     "Secondary"),
+    ("S79", "WorldatWork — Dual career ladders: ways to reward specialist leadership", "Professional body",
+     "Parallel individual-contributor and management tracks: the IC and Manager lanes inside each role in Bands B and C",
+     "https://worldatwork.org/workspan/articles/dual-career-ladders-ways-to-reward-specialist-leadership", "Secondary"),
+    ("S80", "Mercer — Job architecture and career frameworks", "Consulting method",
+     "Career frameworks set levels, tracks and families / sub-families together; only one in two companies has one",
+     "https://www.mercer.com/en-ph/solutions/talent-and-rewards/job-architecture/", "Secondary"),
 ]
 
 

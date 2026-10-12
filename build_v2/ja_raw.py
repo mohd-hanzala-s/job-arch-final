@@ -42,7 +42,8 @@ GROUPS = [("HRIS", "HR RECORD — Employee Master · HRIS, 23 Sep 2026", "1F3864
           ("SURVEY", "HOW WE GROW SURVEY — all 20 questions, as answered", "7030A0"),
           ("MM", "CARBON MAPPING MASTER — as received", "843C0C"),
           ("MGR", "MANAGER TALENT MAPPING — KRAs, ratings, potential, succession, training, as received", "C55A11"),
-          ("CARBON", "CARBON — reporting change, FY27 leadership scorecard, open items", "375623"),
+          ("CARBON", "CARBON — reporting change, 9-box grid, FY27 leadership scorecard, open items", "375623"),
+          ("SURVEY6", "HOW WE GROW SURVEY — the six-theme summary, follow-up and exclusions", "7030A0"),
           ("OLD", "EMPLOYEE MASTER · OLDER COPY — only where it differs", "595959")]
 GROUP_NAME = {g: n for g, n, _ in GROUPS}
 
@@ -96,7 +97,7 @@ class Record:
         if not k or k in DROP:
             return
         v = val(v, J.text(h).strip())
-        if v == "":
+        if v == "" or (isinstance(v, str) and PLACEHOLDER.match(v)):   # 'Not provided', 'Not rated' and the like: nothing received
             return
         self.f.setdefault((group, k), []).append((prio, v, label))
 
@@ -320,6 +321,55 @@ def clean_analysis(v):
     return v
 
 
+ALLSRC_GROUPS = [  # words in the All-Sources file's source title → (Raw Data group, header prefix)
+    ("Employee Master 23-Sep-2026", "HRIS", ""), ("Employee Master (earlier file)", "OLD", ""),
+    ("Survey file · Employee Master", "HRIS", ""), ("Survey file · Raw Data", "SURVEY", ""),
+    ("Survey file · 6 Column Data", "SURVEY6", "Six-theme summary · "), ("Survey file · Follow-Up List", "SURVEY6", "Follow-up list · "),
+    ("Survey file · Excluded List", "SURVEY6", "Excluded list · "), ("CARBON · Mapping Master", "MM", ""),
+    ("CARBON · Talent Mapping Raw", "MGR", ""), ("CARBON · Change Reporting", "CARBON", ""), ("Manager Talent Mapping", "MGR", ""),
+    ("CARBON · 9-Box Grid", "CARBON", "CARBON 9-box grid · "), ("Person (key)", "HRIS", ""),
+]
+ALLSRC_SKIP = {"rowsinsource", "howrowsweresmatched", "howrowsarematched", "howrowsarematched", "sourceshodingthisperson", "sourcefile",
+               "sheet", "srno", "emailid", "businessjobarchitecture"}
+
+
+def all_sources_rows(srcdir):
+    """The All-Sources collation (one row per person, every source sheet's columns grouped in row 3): yields
+    (emp, name, business, [(group, header, value)])."""
+    path = next(iter(sorted(glob.glob(os.path.join(srcdir, "*Employee_Raw_Data_All_Sources*.xlsx")))), None)
+    if not path:
+        return
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    rows = list(wb.worksheets[0].iter_rows(values_only=True))
+    wb.close()
+    src, cur = [], ""
+    for x in rows[2]:
+        cur = J.text(x) if x not in (None, "") else cur
+        src.append(cur)
+    hdr = [J.text(x) for x in rows[3]]
+    j = {h: n for n, h in enumerate(hdr) if h not in ("",)}
+    for r in rows[4:]:
+        if not any(x not in (None, "") for x in r):
+            continue
+        out = []
+        for n, h in enumerate(hdr):
+            if not h or n >= len(r) or r[n] in (None, ""):
+                continue
+            k = J.key(h)
+            if k in ALLSRC_SKIP or k.startswith(("howrows", "sourcesholding", "rowsinsource", "inthe")):
+                continue
+            g = next(((gg, pre) for words, gg, pre in ALLSRC_GROUPS if words in src[n]), None)
+            if g is None:
+                continue
+            gg, pre = g
+            if gg == "HRIS" and h in ("Total Question Answered", "Status", "Status Detail", "Outreach Status"):
+                gg = "SURVEY"
+            if h.startswith("Unnamed column"):
+                h = f"{src[n].split(' · ')[0].split('  ')[0]} · {h.lower()}"
+            out.append((gg, pre + h, r[n]))
+        yield r[j["Emp ID"]], r[j["Employee name"]], r[j.get("Business (job architecture)", 0)], out
+
+
 def em_biz(hdr, r):
     j = {J.text(h).strip(): i for i, h in enumerate(hdr)}
     return J.text(r[j["Product/Others"]]) if "Product/Others" in j else None
@@ -413,6 +463,18 @@ def collect(srcdir, people, unmapped, s3h, s3rows, v1dir=V1_DIR):
                 put(who, "HRIS", "Emp ID" if fkey(h) == "empid" else "Employee Name", v, 5, f"v1 {biz} workbook")
                 continue
             put(who, g, h, v, 4, f"v1 {biz} workbook")
+    # 2b · the All-Sources collation: every column of every source sheet, one row per person — fills what the files above hold
+    # in other copies, and adds the six-theme survey summary, the follow-up and excluded lists and the CARBON 9-box sheet
+    for emp, name, biz, cells in all_sources_rows(srcdir):
+        who = jn.find(emp, name, biz=biz)
+        if who:
+            found["all_sources"] = found.get("all_sources", 0) + 1
+        for g, h, v in cells:
+            if fkey(h) in ("empid", "employeename", "name", "employeeid", "newemployeeid", "empnumber"):
+                put(who, "HRIS", "Emp ID" if "id" in fkey(h) or "number" in fkey(h) else "Employee Name", v, 7, "All-sources file")
+                continue
+            put(who, g, h, v, 7, "All-sources file")
+
     # 3 · the older Employee Master — kept apart, shown only where it differs
     for path in glob.glob(os.path.join(v1dir, "Employee Master_OLD*.xlsx")):
         for sheet, hdr, r, emp, name in em_rows(path):
