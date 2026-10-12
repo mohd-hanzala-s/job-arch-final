@@ -19,10 +19,10 @@ import openpyxl
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE = os.path.join(ROOT, "IRIS_JA_Core_Files_v1.12.2")
 MASTER = os.path.join(CORE, "IRIS_JA_2_HR_Super_Master.xlsx")
-OUT = os.path.join(ROOT, "IRIS_JA_Final_v1.14")
-VERSION = "Final v1.14"
-VER = "v1.14"
-STAMP = "IRIS · Job Architecture & Job Design · Final v1.14 · October 2026 · Internal — Confidential · HR only"
+OUT = os.path.join(ROOT, "IRIS_JA_Final_v1.15")
+VERSION = "Final v1.15"
+VER = "v1.15"
+STAMP = "IRIS · Job Architecture & Job Design · Final v1.15 · October 2026 · Internal — Confidential · HR only"
 
 PERSONAL = {"gender", "dob", "age", "emailid", "today", "dateofresignation", "dateofrelieving", "mobile"}
 

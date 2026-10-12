@@ -1,4 +1,4 @@
-"""Business-Head Workbook — Final v1.14 (HR decisions of 12 October 2026).
+"""Business-Head Workbook — Final v1.15 (HR decisions of 12 October 2026).
 
 One file for all businesses, read top down: the CEO first, then each head and their teams.
 
@@ -610,7 +610,7 @@ def main(srcdir):
     Y.colour_key(ws, 4)
     groups = [
         ("CORE EMPLOYEE DETAILS", "1F3864", [("Business", 10), ("Department", 18), ("Layer from the CEO", 7), ("Emp ID", 12), ("Employee name", 22),
-                                             ("Current designation", 24), ("Proposed designation", 26), ("Job family · v1.14", 20),
+                                             ("Current designation", 24), ("Proposed designation", 26), ("Job family", 20),
                                              ("Sub-family", 22), ("Track", 12), ("Role ID", 10), ("Reporting manager", 20),
                                              ("Manager Emp ID", 12), ("Total exp. · yrs", 8), ("Exp. at IRIS · yrs", 8), ("Qualification", 16),
                                              ("Current level · as is", 9), ("Model level · v1.13", 9)]),
@@ -678,7 +678,7 @@ def main(srcdir):
         vals = {
             "Business": p["biz"], "Department": J.text(p["tm"][H["Department"]]), "Layer from the CEO": pr[i]["depth"],
             "Emp ID": p["emp"], "Employee name": p["name"], "Current designation": J.text(p["tm"][H["Current designation"]]),
-            "Proposed designation": J.text(p["tm"][H["Final designation"]]), "Job family · v1.14": J.text(p["tm"][H["Job family"]]),
+            "Proposed designation": J.text(p["tm"][H["Final designation"]]), "Job family": J.text(p["tm"][H["Job family"]]),
             "Sub-family": J.text(p["tm"][H["Sub-family · what they do"]]), "Track": J.text(p["tm"][H["Track"]]), "Role ID": links[0],
             "Reporting manager": J.text(p["tm"][H["Reporting manager"]]), "Manager Emp ID": links[1],
             "Total exp. · yrs": p["tm"][H["Total exp. · yrs"]], "Exp. at IRIS · yrs": p["tm"][H["Exp. at IRIS · yrs"]],
@@ -960,7 +960,7 @@ def main(srcdir):
                              "education and span norms and the market codes — sheet 4 has every source."),
         ("HR proposed band", f"From the model · six ratings × market-derived weights and rules R1–R13 · then the top-down manager rule "
                              f"HR agreed on 12 October 2026: {moves['down']} people move down, pay and title protected for one cycle, "
-                             f"{moves['up']} move up. Department and function heads sit in Executive Leadership · Business Head."),
+                             f"{moves['up']} move up. Band E sits in its own job family, Enterprise Leadership · E2 Chief Executive · E1 Chief Officers · CXO; department and function heads at C1–D2 sit in Executive Leadership · Business Head."),
         ("Input from benchmarking", "The same six ratings on the plain market-average weights, without IRIS's adjustments, rounded to a "
                                     "level, with the person's experience against the market range for it."),
         ("Colours", "Yellow = yours to edit · red = something missing · band colours on levels."),

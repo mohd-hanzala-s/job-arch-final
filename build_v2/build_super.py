@@ -40,7 +40,7 @@ GROUPS = {
     "kra": ("KRAs RECEIVED FROM MANAGERS — as submitted · source talent-mapping files, October 2026", "375623", "E2EFDA"),
     "survey": ("WHAT THE EMPLOYEE SHARED IN THE SURVEY — per person · CARBON Mapping Master; other products need the How We Grow export", "7030A0", "EFE6F7"),
     "links": ("LINKS & DATA QUALITY — keys to the role profile and manager, data checks, weight sensitivity", "595959", "EDEDED"),
-    "hr": ("HR PROPOSED — v1.14 · top-down manager rule · department heads in Executive Leadership", "C00000", "FDECEC"),
+    "hr": ("HR PROPOSED — v1.14 · top-down manager rule · heads in Executive or Enterprise Leadership", "C00000", "FDECEC"),
 }
 HR_COLS = [
     ("HR proposed level · v1.14", 9),
@@ -68,8 +68,8 @@ def hr_values(M, p, pr, changed):
         move = "▼ Down · pay and title protected"
     fam = ""
     if p["i"] in changed:
-        of, os_ = changed[p["i"]]
-        fam = f"Department head · moved to {V.HEAD_FAMILY} · {V.HEAD_SUB}; was {of} · {os_}"
+        of, os_, nf, ns = changed[p["i"]]
+        fam = f"{'Band E · enterprise leader' if nf == V.ENT_FAMILY else 'Department head'} · moved to {nf} · {ns}; was {of} · {os_}"
     return [lv, V.BAND_NAME.get(V.band(lv), ""), V.level_title(lv, p["tm"][H["Track"]]), move, d["mgr_level"] or "—",
             d["check"], d["note"], d["depth"], fam]
 LINK_COLS = [
@@ -311,7 +311,7 @@ def contents_and_start(wb, n_unmapped, stats):
         st.row_dimensions[r].height = 75
         r += 1
     r += 1
-    c = st.cell(r, 1, "What v1.14 adds — HR decisions of 12 October 2026")
+    c = st.cell(r, 1, "What v1.14 and v1.15 add — HR decisions of 12 October 2026")
     c._style = copy.copy(h5._style)
     r += 1
     for j, h in enumerate(["#", "Decision", "What changed", "Where"], 1):
@@ -319,7 +319,7 @@ def contents_and_start(wb, n_unmapped, stats):
     r += 1
     rows14 = [
         ("Titles", f"D2 = Senior Vice President / Business Head · D1 = Associate Vice President / Distinguished Principal — the D1 specialist title is decided: Distinguished Principal · B1 = Team Lead / Specialist / Asst Manager. {stats.get('titled', 0)} IRIS title cells updated; raw data and people's designations are left as received.", "Every ladder, catalogue and title column"),
-        ("Department and function heads", f"The top person of each department who leads a team at C1 or above — {stats.get('heads', 0)} people — moves to job family Executive Leadership, sub-family Business Head. Their earlier family is kept on sheet 2, HR PROPOSED.", "Sheets 1a, 2, 3 · orange cells"),
+        ("Department and function heads", f"The top person of each department who leads a team at C1 or above — {stats.get('heads', 0)} people. v1.15: Band E sits in its own job family, Enterprise Leadership — E2 Chief Executive, E1 Chief Officers · CXO; the heads at C1–D2 sit in Executive Leadership · Business Head. Their earlier family is kept on sheet 2, HR PROPOSED.", "Sheets 1a, 2, 3 · orange cells"),
         ("Top-down manager rule · hybrid", f"Applied from the CEO down. Under a head at C1 or above a reportee sits in a lower band; below C1 a reportee sits at least one level below the manager; a Band A lead with peer-level reportees becomes B1 Team Lead; CEO with CXOs is the agreed exception. {stats.get('down', 0)} people move down · pay and title protected · {stats.get('up', 0)} move up. FINAL LEVEL keeps the v1.13 model; the HR proposed level sits beside it.", "Sheet 2 · HR PROPOSED · 1b Person Card"),
         ("Why not the strict band rule", "Tested first: reporting chains run up to 9 layers but there are five bands, so capping by band cascades — 88 people moved down and 172 could not be placed below their manager. HR chose the hybrid rule instead.", "—"),
     ]
@@ -365,7 +365,7 @@ def main(srcdir):
         idx = {(J.text(ws.cell(r, key_col).value), J.text(ws.cell(r, name_col).value)): r for r in range(hrow + 1, ws.max_row + 1)}
         for p in heads:
             r = idx[(p["emp"], p["name"])]
-            for h, v in ((fam_h, V.HEAD_FAMILY), (sub_h, V.HEAD_SUB)):
+            for h, v in ((fam_h, changed[p["i"]][2]), (sub_h, changed[p["i"]][3])):
                 c = ws.cell(r, hdr[h])
                 c.value = v
                 c.fill = PatternFill("solid", fgColor="F8CBAD")

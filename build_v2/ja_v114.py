@@ -46,6 +46,23 @@ LEVEL_TITLE = {  # level → (IC title, manager title) after the v1.14 decisions
     "E1": ("—", "CXO / President"), "E2": ("—", "Chief Executive Officer"),
 }
 HEAD_FAMILY, HEAD_SUB = "Executive Leadership", "Business Head"
+# v1.15 · HR, 12 October 2026: Band E sits in its own job family, apart from the Business Heads
+ENT_FAMILY = "Enterprise Leadership"
+ENT_SUB = {"E2": "Chief Executive", "E1": "Chief Officers · CXO"}
+ENT_PURPOSE = {
+    "E2": ("Leads the whole enterprise: sets strategy, answers to the board for results, risk, culture and long-term value, "
+           "and leads the executive team of Chief Officers and Business Heads."),
+    "E1": ("Leads an enterprise-wide function as a Chief Officer — revenue, finance, operations or technology — across all six "
+           "businesses; sets the function's strategy and sits on the executive team with the CEO."),
+}
+
+
+def head_place(level):
+    """Family, sub-family, purpose and catalogue-ID stem for a department or function head at this level."""
+    if level in ENT_SUB:
+        stem = "RC-EN-CE" if level == "E2" else "RC-EN-CO"
+        return ENT_FAMILY, ENT_SUB[level], ENT_PURPOSE[level], stem
+    return HEAD_FAMILY, HEAD_SUB, None, "RC-EL-BH"
 
 
 def band(level):
@@ -208,8 +225,8 @@ HEAD_PURPOSE = ("Heads a department or function: sets its direction, owns its re
 
 
 def apply_heads(M, people, F_prev, heads):
-    """Move heads to Executive Leadership · Business Head in the person records and add the catalogue roles they now hold.
-    Returns {i: (old family, old sub-family)}."""
+    """Move heads to their v1.15 family: Band E to Enterprise Leadership (Chief Executive · Chief Officers · CXO), C1–D2 to
+    Executive Leadership · Business Head. Adds the catalogue roles they now hold. Returns {i: (old fam, old sub, new fam, new sub)}."""
     H = {h: i for i, h in enumerate(M["tm_hdr"])}
     ch = M["cat_hdr"]
     cj = {h: j for j, h in enumerate(ch)}
@@ -217,20 +234,22 @@ def apply_heads(M, people, F_prev, heads):
     changed = {}
     by_level = collections.defaultdict(list)
     for p in heads:
-        old = (J.text(p["tm"][fj]), J.text(p["tm"][sj]))
-        changed[p["i"]] = old
-        by_level[J.text(p["tm"][H["FINAL LEVEL"]])].append((p, F_prev.cat_of.get(p["i"])))
+        lv = J.text(p["tm"][H["FINAL LEVEL"]])
+        fam, sub, _, _ = head_place(lv)
+        changed[p["i"]] = (J.text(p["tm"][fj]), J.text(p["tm"][sj]), fam, sub)
+        by_level[lv].append((p, F_prev.cat_of.get(p["i"])))
         p["tm"] = list(p["tm"])
-        p["tm"][fj], p["tm"][sj] = HEAD_FAMILY, HEAD_SUB
-    ladder = {J.text(r[1]): r for r in M.get("f4", [])}
+        p["tm"][fj], p["tm"][sj] = fam, sub
     for lv, items in sorted(by_level.items(), key=lambda x: VAL.get(x[0], 0)):
+        fam, sub, purpose, stem = head_place(lv)
         row = [None] * len(ch)
+
         def put(h, v):
             if h in cj:
                 row[cj[h]] = v
-        put(ch[0], f"RC-EL-BH-{lv.replace('+', 'P')}")
-        put("Job family", HEAD_FAMILY)
-        put("Sub-family", HEAD_SUB)
+        put(ch[0], f"{stem}-{lv.replace('+', 'P')}")
+        put("Job family", fam)
+        put("Sub-family", sub)
         put("Level", lv)
         put("Level title", LEVEL_TITLE.get(lv, ("", ""))[1])
         put("Track", "Manager")
@@ -239,10 +258,9 @@ def apply_heads(M, people, F_prev, heads):
         put("Holders", len(ps))
         put("Who", ", ".join(J.text(p["name"]) for p in ps))
         put("Business", ", ".join(sorted({p["biz"] for p in ps})))
-        put("Purpose", HEAD_PURPOSE)
-        # carry every descriptive field of the roles they held before, so nothing is lost
+        put("Purpose", purpose or HEAD_PURPOSE)
         for h in ch[13:]:
-            if h in ("Purpose",):
+            if h == "Purpose":
                 continue
             vals = []
             for _, c in items:

@@ -1,5 +1,5 @@
-"""Checks for the three v1.14 workbooks — HR Super Master, HR Master Simplified, Business-Head Workbook.
-Exit code 0 = every check passes. Usage: python3 verify_v114.py
+"""Checks for the three v1.15 workbooks — HR Super Master, HR Master Simplified, Business-Head Workbook.
+Exit code 0 = every check passes. Usage: python3 verify_v115.py
 """
 import collections
 import os
@@ -62,7 +62,7 @@ def main():
                     if titled(v, w):
                         decided["titles"] += 1
                         continue
-                    if w in (V.HEAD_FAMILY, V.HEAD_SUB) and n in ("1a. Placements", "1b. Person Card", "2. Talent Mapping", "3. Raw Data & Market Standards"):
+                    if w in (V.HEAD_FAMILY, V.HEAD_SUB, V.ENT_FAMILY, *V.ENT_SUB.values()) and n in ("1a. Placements", "1b. Person Card", "2. Talent Mapping", "3. Raw Data & Market Standards"):
                         decided["heads"] += 1
                         continue
                     changed[n] += 1
@@ -171,9 +171,15 @@ def v114_checks(sup, sim):
     h = {x: i for i, x in enumerate(tm[0])}
     rows = [r for r in tm[1:] if r[1] or r[2]]
     heads = [r for r in rows if r[h["Job family"]] == V.HEAD_FAMILY and r[h["Sub-family · what they do"]] == V.HEAD_SUB]
-    moved = [r for r in rows if J.text(r[h["Job family & sub-family · v1.14 change"]]).startswith("Department head")]
-    check("Department and function heads sit in Executive Leadership · Business Head", len(moved) == 18 and all(r in heads for r in moved),
-          f"{len(moved)} heads moved · {len(heads)} people now in Executive Leadership · Business Head")
+    ent = [r for r in rows if r[h["Job family"]] == V.ENT_FAMILY]
+    moved = [r for r in rows if J.text(r[h["Job family & sub-family · v1.14 change"]]).startswith(("Department head", "Band E"))]
+    check("Department and function heads moved: C1–D2 to Executive Leadership · Business Head, Band E to Enterprise Leadership",
+          len(moved) == 18 and all(r in heads or r in ent for r in moved), f"{len(moved)} moved · Business Head {len(heads)} · Enterprise {len(ent)}")
+    e_ok = all((r[h["FINAL LEVEL"]] in V.ENT_SUB) and r[h["Sub-family · what they do"]] == V.ENT_SUB[r[h["FINAL LEVEL"]]] for r in ent)
+    e_all = all(r[h["Job family"]] == V.ENT_FAMILY for r in rows if r[h["FINAL LEVEL"]] in ("E1", "E2"))
+    no_e_bh = not any(r[h["FINAL LEVEL"]] in ("E1", "E2") for r in heads)
+    check("Band E is its own family: E2 Chief Executive · E1 Chief Officers · CXO, and no Band E person in Business Head", e_ok and e_all and no_e_bh,
+          ", ".join(f"{r[h['Employee name']]} {r[h['FINAL LEVEL']]} {r[h['Sub-family · what they do']]}" for r in ent))
     hm = next(r for r in rows if r[h["Employee name"]] == "Hemant Karale")
     check("HR's edit kept: Hemant Karale's sub-family is Business Head", hm[h["Sub-family · what they do"]] == V.HEAD_SUB)
     lc = sup["1c. Scoring Made Simple"]
