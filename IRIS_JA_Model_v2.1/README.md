@@ -8,7 +8,18 @@ One workbook for HR and business leaders: `IRIS_JA_Model_v2.1.xlsx`.
   - Each level row shows the weightage IRIS → Market → Leader for the seven parameters, with a written justification. The justification gives the published share for each method, the Experience / Education split, the type-of-work tilt and the references.
   - A ROLE row re-weights every level of that role in that department. A level row's own entry wins over the ROLE row.
   - Talent Mapping reads each person's weightage from their own department × role × level row, so every edit flows through live.
-- **Inputs received in the survey** (was "What they shared") now holds a detailed summary for each person. It covers how many questions they answered, the full CARBON answers (mandate, deliverables, capabilities, development, challenges), their answers read by parameter, and the learning they asked for. It is blank if nothing was received.
+- **Inputs received in the survey** (was "What they shared") now holds every answer for each person, question by question (Q1 to Q20). It then adds the CARBON role mapping, the earlier survey round, how the rater read the answers by parameter, and the learning they asked for. It is blank if nothing was received.
+- **Raw Data (sheet 8) now holds every bit of data we have on each person** — 160 columns, joined from every source, with values exactly as received:
+  - **HR record** from the Employee Master (HRIS) of 23 Sep 2026, including the US & Singapore and consultant sheets.
+  - **The How We Grow survey, question by question:** all 20 questions, the survey status and how the answers came in, plus the earlier / alternate survey round. That is 10,394 answers from 521 people.
+  - **The CARBON Mapping Master**, every column.
+  - **The managers' talent mapping:** KRAs (self, manager, quarterly), ratings, potential, 9-box, promotion, succession, training needs, actual JD, projects.
+  - **CARBON extras:** proposed reporting changes, the FY27 leadership scorecard and open hiring items, set against the leaders they belong to.
+  - **The older Employee Master**, only where it differs.
+  - Where two files disagree, the newest comes first and the others follow after ‖, so nothing is dropped.
+  - People in the files but not in the architecture are listed at the bottom.
+  - Personal fields (gender, date of birth, age, e-mail, mobile, resignation and relieving dates) are left out.
+  - A check confirms that all 85,381 non-blank, non-personal cells in the source files appear on the right person's row.
 - **Role Definitions (sheet 4)** says what Low / Medium / High mean for every role at every level, including vacant ones.
 - Weightage and the market level now follow each person's own level and department, not the role's most common level. This changes the IRIS Business Impact weight for 9 people and the market level for 7. Placement and titles are unchanged.
 
@@ -31,7 +42,7 @@ One workbook for HR and business leaders: `IRIS_JA_Model_v2.1.xlsx`.
 | 5 | Market Benchmark | Low / Medium / High for each parameter and role group, each with the published numbers behind it (Korn Ferry Hay, Mercer IPE, five public plans) and the level benchmarks for experience, span, Radford and SFIA |
 | 6 | Talent Mapping | Every person, top down: who they are → inputs received in the survey and KRAs → IRIS placement → market → weightage (IRIS, Market, Leader) → ratings (IRIS, Leader) → Leader proposal |
 | 7 | Person Card | One person on one page; pick a name or type an Emp ID |
-| 8 | Raw Data | 43 core columns: HR record, experience and education, everything shared in the survey, performance and talent, KRAs and work |
+| 8 | Raw Data | Every bit of data held, 160 columns: HR record, all 20 survey questions and the earlier round, CARBON Mapping Master, managers' talent mapping, CARBON scorecard, older Employee Master where it differs |
 | 9 | Backend Data | The lookups |
 
 ## The model in one line
@@ -77,6 +88,7 @@ The v1.15 HR Super Master and Simplified files still show the v1.14 HR proposed 
 
 ```
 cd build_v2
+JA_V1=<folder with the six v1 IRIS_<Business>_Talent_Mapping.xlsx and the Employee Masters> \
 python3 build_model.py <folder with the five source talent-mapping files>
-python3 verify_model.py      # 31 checks, including live ROLE-row, level-row and vacant-level edits recalculated in LibreOffice
+python3 verify_model.py      # 33 checks, including live ROLE-row, level-row and vacant-level edits recalculated in LibreOffice
 ```

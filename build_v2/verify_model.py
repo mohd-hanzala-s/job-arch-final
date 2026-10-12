@@ -11,6 +11,7 @@ import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ja_common as J  # noqa: E402
+import ja_raw as RW  # noqa: E402
 import ja_v114 as V  # noqa: E402
 import ja_xlsx as X  # noqa: E402
 from build_model import EXP_RANGE, OUTFILE  # noqa: E402
@@ -102,10 +103,36 @@ def main():
           len(lmh_rows) >= 56 and all(r[3] and r[7] and r[8] for r in lmh_rows), f"{len(lmh_rows)} rows")
     raw = list(wb["8. Raw Data"].iter_rows(min_row=6, values_only=True))
     rwh = [x for x in raw[0] if x]
-    personal = [x for x in rwh if J.hkey(x) in J.PERSONAL]
-    check("Raw Data keeps only core and useful columns, no personal fields", len(rwh) <= 50 and not personal, f"{len(rwh)} columns")
+    personal = [x for x in rwh if RW.fkey(x.split(" · ")[0]) in RW.DROP]
+    qcols = [x for x in rwh if re.match(r"^Q\d+ · ", x)]
+    check("Raw Data holds every column we received, all 20 survey questions, no personal fields",
+          len(rwh) >= 150 and len(qcols) == 20 and not personal, f"{len(rwh)} columns · {len(qcols)} questions · personal {personal}")
     status = collections.Counter(r[1] for r in raw[1:] if r[1])
-    check("Raw Data holds everyone plus the people not yet mapped", status.get("Mapped") == 586, dict(status))
+    check("Raw Data holds everyone plus the people not yet mapped and those only in the source files", status.get("Mapped") == 586, dict(status))
+    rh_ = {x: i for i, x in enumerate(raw[0])}
+    by_id, by_nm = {}, collections.defaultdict(str)
+    for r in raw[1:]:
+        blob = " ".join(re.sub(r"\s+", " ", str(x).replace("\u200b", "")).lower() for x in r if x not in (None, ""))
+        for x in str(r[rh_["Emp ID"]] or "").split("\n"):
+            if J.key(x.split(": ")[-1]).startswith(("iris", "intn")):
+                by_id.setdefault(J.key(x.split(": ")[-1]), blob)
+        for x in str(r[rh_["Employee Name"]] or "").split("\n"):
+            by_nm[J.nname(x.split(": ")[-1])] += " ¦ " + blob
+    n_ans, lost = 0, []
+    if RW.v1_files():
+        for biz, hdr, r in RW.v1_rows():
+            j = {x: i for i, x in enumerate(hdr)}
+            b = by_id.get(J.key(r[j["Emp Id"]])) or by_nm.get(J.nname(r[j["Employee Name"]]), "")
+            for q in RW.SURVEY_Q + [RW.ADDITIONAL]:
+                v = RW.val(r[j[q]], q) if q in j else ""
+                if v != "":
+                    n_ans += 1
+                    if re.sub(r"\s+", " ", str(v).replace("\u200b", "")).strip().lower() not in b:
+                        lost.append((r[j["Employee Name"]], q))
+    check("Every survey answer received, question by question, is on the person's Raw Data row",
+          n_ans > 9000 and not lost, f"{n_ans} answers · {len(lost)} missing {lost[:3]}")
+    with_q = sum(1 for x in sv if x and "Q1 · " in x)
+    check("Inputs received in the survey on Talent Mapping carries the answers question by question", with_q >= 515, f"{with_q} people")
     pc = list(wb["7. Person Card"].iter_rows(min_row=8, max_row=8, values_only=True))[0]
     check("Person Card resolves", isinstance(pc[1], str) and "·" in pc[1], str(pc[1]))
     z = zipfile.ZipFile(OUTFILE)

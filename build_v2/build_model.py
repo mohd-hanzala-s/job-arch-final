@@ -13,14 +13,16 @@ The story the workbook follows, sheet by sheet:
                                 market, weightage IRIS → Market → Leader, ratings IRIS → Leader, and the Leader proposed
                                 level and band, which stay blank until a leader gives an input
   7 Person Card               — one person on one page
-  8 Raw Data                  — survey, performance, KRAs and core HR data only, one row per person
+  8 Raw Data                  — every bit of data held on each person: HR record, all 20 survey questions, the CARBON
+                                mapping master and the managers' talent mapping, joined from every source file
   9 Backend Data              — the lookups
 
 Placement: the v1.13 evidence level, then the fewest moves that keep every reportee in a lower band than
 their manager · moving up costs twice moving down; Band E with Band E is the agreed exception; where a
 reporting chain is deeper than the bands, the pair is flagged for a structure decision, never forced.
 
-Usage: python3 build_model.py <folder with the five talent-mapping source files>
+Usage: JA_V1=<folder with the six v1 IRIS_<Business>_Talent_Mapping.xlsx and the Employee Masters> \
+       python3 build_model.py <folder with the five talent-mapping source files>
 """
 import collections
 import os
@@ -37,6 +39,7 @@ import ja_common as J  # noqa: E402
 import ja_person as P  # noqa: E402
 import ja_style as Y  # noqa: E402
 import ja_v114 as V  # noqa: E402
+import ja_raw as RW  # noqa: E402
 import ja_xlsx as X  # noqa: E402
 from build_bh import (EXP_SPLIT, PARAMS, PKEYS, LMH, REFS, RG_NAME, TILT, TINT, WEIGHT_H, WEIGHT_M, cell, default_weights,  # noqa: E402
                       headers, load_reference, market_weights, name_range, qual_rank, rg_of, short, to_lmh)
@@ -314,23 +317,29 @@ class Weights:
         return self.memo[k]
 
 
-def survey_summary(sv, ev):
-    """Everything the person told us in the How We Grow survey, in full · blank if nothing was received."""
-    answered = sv[0] or 0
+def survey_summary(sv, ev, record):
+    """Everything the person told us in the How We Grow survey, question by question and in full, then the CARBON role
+    mapping, the earlier survey round, how the rater read the answers and the learning they asked for · blank if nothing."""
+    answered, qa, earlier = RW.survey_of(record) if record else (0, [], "")
+    answered = answered or sv[0] or 0
     parts = []
+    if qa:
+        parts.append("\n\n".join(f"Q{RW.SURVEY_Q.index(q) + 1} · {q}\n{J.text(a)}" for q, a in qa))
     if J.text(sv[-1]).startswith("Per-person"):
         for lab, v in (("Role mandate & core purpose", sv[1]), ("Deliverables & responsibilities", sv[2]),
                        ("Capabilities, tools & workload", sv[3]), ("Development priorities & learning needs", sv[4]),
                        ("Challenges & support required", sv[5])):
             if J.has(v):
-                parts.append(f"{lab.upper()}\n{J.text(v)}")
+                parts.append(f"CARBON ROLE MAPPING · {lab.upper()}\n{J.text(v)}")
+    if earlier:
+        parts.append(f"EARLIER SURVEY ROUND · THEIR ANSWERS\n{earlier}")
     if answered and ev:
-        parts.append("THEIR ANSWERS, READ BY PARAMETER\n" + "\n".join(ev))
+        parts.append("HOW THE RATER READ THEIR ANSWERS, BY PARAMETER\n" + "\n".join(ev))
     if J.has(sv[8]):
         parts.append("LEARNING THEY ASKED FOR\n" + J.text(sv[8]))
     if not parts:
         return ""
-    head = f"Answered {answered} of 20 questions." if answered else "Shared through the CARBON role mapping."
+    head = (f"Answered {answered} of 20 questions." if answered else "Shared through the CARBON role mapping.")
     return (head + "\n\n" + "\n\n".join(parts))[:32000]
 
 
@@ -759,6 +768,16 @@ def main(srcdir):
     for c_, w in zip("ABCDEFGHIJ", (26, 22, 12, 14, 14, 18, 14, 12, 50, 50)):
         ws.column_dimensions[c_].width = w
 
+    # ================================================================ every bit of data we hold, joined per person
+    sup = openpyxl.load_workbook(os.path.join(J.ROOT, "IRIS_JA_Final_v1.15", "IRIS_JA_2_HR_Super_Master_v1.15.xlsx"), read_only=True, data_only=True)
+    s3 = list(sup["3. Raw Data & Market Standards"].iter_rows(min_row=6, values_only=True))
+    sup.close()
+    s3h = {J.text(h): j for j, h in enumerate(s3[0])}
+    s3rows = [r_ for r_ in s3[1:] if r_[1] or r_[2]]
+    recs, raw_cols, found = RW.collect(srcdir, people, unmapped, s3h, s3rows)
+    print(f"Raw data joined: {len(raw_cols)} columns · v1 survey rows matched {found['v1']} · Employee Master rows {found['em_new']} · "
+          f"older master {found['em_old']}")
+
     # ================================================================ Talent Mapping
     ws = ws_tm
     Y.banner(ws, "Talent Mapping — every person, top down",
@@ -825,7 +844,7 @@ def main(srcdir):
                     iris_r[pk] = ""
             else:
                 iris_r[pk] = ""
-        shared = survey_summary(sv, ev)
+        shared = survey_summary(sv, ev, recs.get(("p", i)))
         try:
             yrs = float(tm[H["Total exp. · yrs"]])
         except (TypeError, ValueError):
@@ -975,83 +994,41 @@ def main(srcdir):
 
     # ================================================================ Raw Data
     ws = ws_raw
-    Y.banner(ws, "Raw Data — the core of what we hold, one row per person",
-             "Sheet 8 · Only what is useful: HR record, experience and education, everything shared in the survey, performance and talent "
-             "data from the managers, KRAs and the work assigned. Blank = not received. ◂ Back returns to the person on Talent Mapping. "
-             "People in the source files but not yet in the architecture are at the bottom.", STAMP, width_cols=16)
+    Y.banner(ws, "Raw Data — every bit of data we hold, one row per person",
+             "Sheet 8 · Everything received, as received: the HR record from the Employee Master, all 20 How We Grow survey "
+             "questions and the earlier survey round, the CARBON mapping master, the managers' talent mapping (KRAs, ratings, "
+             "potential, 9-box, succession, training) and the CARBON scorecard. Where two files disagree, the newest comes first "
+             "and the others follow after ‖. Personal fields are left out. Blank = not received. ◂ Back returns to the person "
+             "on Talent Mapping. People in the source files but not yet in the architecture are at the bottom.", STAMP, width_cols=16)
     Y.colour_key(ws, 4)
-    sup = openpyxl.load_workbook(os.path.join(J.ROOT, "IRIS_JA_Final_v1.15", "IRIS_JA_2_HR_Super_Master_v1.15.xlsx"), read_only=True, data_only=True)
-    s3 = list(sup["3. Raw Data & Market Standards"].iter_rows(min_row=6, values_only=True))
-    sup.close()
-    s3h = {J.text(h): j for j, h in enumerate(s3[0])}
-    s3rows = [r_ for r_ in s3[1:] if r_[1] or r_[2]]
-    TMP, CRP, MMP = J.PREFIX["TM"], J.PREFIX["CRAW"], J.PREFIX["MM"]
-    RAW = [
-        ("HR RECORD", "1F3864", [("Business", ["Business"]), ("Emp ID", ["Emp ID"]), ("Employee name", ["Employee name"]), ("Department", ["Department"]),
-                                 ("Designation", ["Current designation"]), ("Employee category", ["Employee Category"]), ("Employee status", ["Employee Status"]),
-                                 ("Date of joining", ["DoJ"]), ("Reporting manager", ["Reporting Manager"]),
-                                 ("Location / region", [TMP + "Location", MMP + "Region / Operating Area"])]),
-        ("EXPERIENCE & EDUCATION", "2E75B6", [("Experience before IRIS", ["EXP Outside IRIS"]), ("Experience at IRIS", ["EXP Current IRIS"]),
-                                              ("Total experience", [TMP + "Total Experience", CRP + "Total Experience"]),
-                                              ("Qualification", ["Highest Qualifications"]), ("Skill sets", ["Skill Sets"])]),
-        ("SURVEY — what they shared", "7030A0", [("Survey questions answered · of 20", ["Survey questions answered · of 20"]),
-                                                 ("Role mandate & core purpose", [MMP + "Role Mandate"]),
-                                                 ("Deliverables & responsibilities", [MMP + "Reported Deliverables & Responsibilities"]),
-                                                 ("Capabilities, tools & workload", [MMP + "Current Capabilities"]),
-                                                 ("Development priorities & learning needs", [MMP + "Development Priorities & Learning Needs"]),
-                                                 ("Challenges & support required", [MMP + "Challenges & Support Required"]),
-                                                 ("Evidence used for the ratings", ["@evidence"])]),
-        ("PERFORMANCE & TALENT — from the managers", "C55A11", [
-            ("Q1 tentative rating · 1-5", [TMP + "Tentative Rating for Q1 · Scale 1-5"]),
-            ("Quarterly performance rating", [TMP + "Quarterly Performance Rating", CRP + "Quarterly Performance Rating"]),
-            ("Potential", [TMP + "Potential Rating · High/Med/Low", CRP + "Potential Rating · High/Med/Low"]),
-            ("9-box", [TMP + "9-Box Placement", CRP + "9-Box Placement"]), ("Ready for promotion", [TMP + "Ready for Promotion", CRP + "Ready for Promotion"]),
-            ("Fast tracker", [TMP + "Fast Tracker · Y/N", CRP + "Fast Tracker · Y/N"]), ("Critical role", [TMP + "Critical Role · Y/N", CRP + "Critical Role · Y/N"]),
-            ("Successor named", [TMP + "Name of Successor Identified", CRP + "Name of Successor Identified"]),
-            ("Last performance discussion", [TMP + "Last Performance Discussion date"]),
-            ("Correct designation · manager's view", [TMP + "Correct Designation", CRP + "Correct Designation Based on Work"]),
-            ("Structural change suggested", [TMP + "Is a structural Change needed for better future", CRP + "Is a structural Change needed for better future · If yes, What changes"]),
-            ("Training needs · current role", [TMP + "Training Needs identified for current Role", CRP + "Training Needs identified for current Role"]),
-            ("Training needs · if promoted", [TMP + "Training Needs identified if · If promotion Ready", CRP + "Training Needs identified if · If promotion Ready"]),
-            ("Manager comments", [CRP + "Comments", MMP + "Comments"])]),
-        ("KRAs & WORK", "375623", [("KRAs set by manager · annual", [TMP + "Annual KRAs · objective Measurable Minimum 5 - set by Manager", MMP + "KRAs Submitted"]),
-                                    ("KRAs · quarterly", [TMP + "Quarterly KRAs"]), ("KRAs · self-reported", [TMP + "Annual KRAs · objective Measurable Minimum 5 - Self"]),
-                                    ("Actual JD · from manager", [CRP + "Actual JD"]),
-                                    ("Projects, products & clients", [TMP + "Projects and Products", TMP + "Projects/Delivery/client Assigned", MMP + "Acual Work"])]),
-    ]
-    raw_groups = [("PERSON", "1F3864", [("◂ Back", 8), ("Status", 12)])] + [(t, d, [(h, 16 if len(src) and "KRAs" not in h and "Survey" not in t else 36) for h, src in cs]) for t, d, cs in RAW]
+    long_ = {"SURVEY", "MM", "CARBON"}
+    raw_groups = [("PERSON", "1F3864", [("◂ Back", 8), ("Status", 12)])]
+    for g, title, dark in RW.GROUPS:
+        cs = [(h, 40 if g in long_ and not h.startswith(("Survey", "Department", "Role Family", "Sub-Family", "Category",
+                                                        "Current ", "New ", "Change", "Career", "Recommended"))
+               else (36 if any(w in h for w in ("KRA", "JD", "Training", "Comment", "Projects", "structural", "Skill"))
+                     else 16)) for gg, k, h in raw_cols if gg == g]
+        if cs:
+            raw_groups.append((title, dark, cs))
     rcols = headers(ws, raw_groups)
-    ev_by_i = {}
-    for i in order:
-        tm = by_i[i]["tm"]
-        ev_by_i[i] = "\n".join(f"{dict(PARAMS)[pk]}: {evidence_line(pk, tm[H[jc]])}" for pk, (rc, jc) in FACT_COLS.items()
-                               if has_evidence(pk, tm[H[jc]]) and evidence_line(pk, tm[H[jc]]))
 
-    def pick(row, srcs, i=None):
-        for s in srcs:
-            if s == "@evidence":
-                return ev_by_i.get(i, "")
-            j = s3h.get(s)
-            if j is not None and J.has(row[j]):
-                v = row[j]
-                return J.debracket(v) if isinstance(v, str) else v
-        return ""
+    def raw_row_out(r, record, status, back):
+        x = cell(ws, r, 1, "◂ Back" if back else "", "EEF2F9" if back else "FFC7CE", first=True)
+        if back:
+            x.hyperlink = f"#{Q(S_TM)}!A{back}"
+            x.font = Y.font(9, True, "0563C1", underline="single")
+        cell(ws, r, 2, status, "EEF2F9" if back else "FFC7CE", not back)
+        prev, longest = None, 0
+        for c_, (g, k, h) in enumerate(raw_cols, 3):
+            v = record.get(g, k) if record else ""
+            dark = next(d for gg, _, d in RW.GROUPS if gg == g)
+            cell(ws, r, c_, v, TINT.get(dark, "FFFFFF") if back else "FDECEC", first=g != prev)
+            prev = g
+            longest = max(longest, len(J.text(v)))
+        ws.row_dimensions[r].height = min(409, max(30, 15 * (1 + longest // 55))) if back else 50
+
     for i in order:
-        r = raw_row[i]
-        row = s3rows[i]
-        x = cell(ws, r, 1, "◂ Back", "EEF2F9", first=True)
-        x.hyperlink = f"#{Q(S_TM)}!A{tm_row[i]}"
-        x.font = Y.font(9, True, "0563C1", underline="single")
-        cell(ws, r, 2, "Mapped", "EEF2F9")
-        c_ = 3
-        for t, d, cs in RAW:
-            for k_, (h, srcs) in enumerate(cs):
-                v = pick(row, srcs, i)
-                if h == "Survey questions answered · of 20" and J.text(v) in ("0", ""):
-                    v = ""
-                cell(ws, r, c_, v, TINT.get(d, "FFFFFF"), first=k_ == 0)
-                c_ += 1
-        ws.row_dimensions[r].height = 80
+        raw_row_out(raw_row[i], recs.get(("p", i)), "Mapped", tm_row[i])
     r = 7 + len(order)
     seen = set()
     for u in unmapped:
@@ -1059,39 +1036,13 @@ def main(srcdir):
         if kk in seen:
             continue
         seen.add(kk)
-        recs = [x for x in unmapped if (J.key(x["rec"]["id"]) or J.nname(x["rec"]["name"])) == kk]
-        cell(ws, r, 1, "", "FFC7CE", first=True)
-        cell(ws, r, 2, "Removed by HR · 9 Oct" if J.nname(u["rec"]["name"]) == "SHREYASH PAWAR" else "NOT YET MAPPED", "FFC7CE", True)
-        c_ = 3
-        for t, d, cs in RAW:
-            for h, srcs in cs:
-                v = ""
-                if h == "Emp ID":
-                    v = u["rec"]["id"]
-                elif h == "Employee name":
-                    v = u["rec"]["name"]
-                elif h == "Business":
-                    v = {"MM": "CARBON", "CRAW": "CARBON"}.get(u["source"]["kind"], u["source"]["label"].split("· ")[-1])
-                else:
-                    for x in recs:
-                        pre = J.PREFIX[x["source"]["kind"]]
-                        for s in srcs:
-                            base = s[len(pre):] if s.startswith(pre) else (s if not s.startswith("[") else None)
-                            if base is None:
-                                continue
-                            for hh, vv in x["rec"]["row"].items():
-                                if J.hkey(hh) == J.hkey(base) and J.has(vv):
-                                    v = J.clean(vv)
-                                    break
-                            if v:
-                                break
-                        if v:
-                            break
-                cell(ws, r, c_, v, "FDECEC")
-                c_ += 1
-        ws.row_dimensions[r].height = 50
+        raw_row_out(r, recs.get(("u", kk)), "Removed by HR · 9 Oct" if J.nname(u["rec"]["name"]) == "SHREYASH PAWAR" else "NOT YET MAPPED", None)
         r += 1
-    ws.freeze_panes = "F7"
+    extra = sorted((w for w in recs if w[0] == "x"), key=lambda w: J.text(recs[w].get("HRIS", "employeename")).lower())
+    for w in extra:
+        raw_row_out(r, recs[w], "In the source files only · not in the architecture", None)
+        r += 1
+    ws.freeze_panes = "E7"
     ws.auto_filter.ref = f"A6:{L(len(rcols))}{r - 1}"
     ws.sheet_view.zoomScale = 85
 
