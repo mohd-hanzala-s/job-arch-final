@@ -265,6 +265,10 @@ def person_title(rr, lv, tm, H):
     return std, f"{cur} → {std}" + (" · HR's final designation" if std == des else "")
 
 
+# Talent Mapping shows a leader only what they need; these stay in the file, folded away behind +
+TM_HIDDEN = {"Layer from the CEO", "Manager Emp ID", "Current level · as is", "Survey · questions answered", "Evidence used for the ratings",
+             "All their data ▸", "Role ID", "Lane", "Structure flag", "Score shift · levels", "Leader proposed band", "Manager check · live"}
+TM_HIDDEN_GROUPS = ("MARKET", "WEIGHTAGE · IRIS BASE", "WEIGHTAGE · MARKET")
 LONG_TEXT = {"Inputs received in the survey", "KRAs from the manager", "Evidence used for the ratings", "Justification · IRIS and Market"}
 
 
@@ -281,7 +285,8 @@ def fit_rows(ws, first, last=None, hdr_row=6, skip=LONG_TEXT):
         tw = []
         for c in row:
             v = c.value
-            if not isinstance(v, str) or v.startswith("=") or (c.row, c.column) in merged or c.column in skip_cols:
+            if (not isinstance(v, str) or v.startswith("=") or (c.row, c.column) in merged or c.column in skip_cols
+                    or ws.column_dimensions[c.column_letter].hidden):
                 continue
             if not (c.alignment and c.alignment.wrap_text) and len(v) * 1.05 <= (ws.column_dimensions[c.column_letter].width or 8.43):
                 continue
@@ -703,7 +708,7 @@ def main(srcdir, simple=False):
              "the Player-Coach steps and Bands D and E have one. Weightage is five steps — VL 0–20 · L 20–40 · M 40–60 · H 60–80 · "
              "VH 80–100 — or a number 0–100. Blue IRIS cells are the base: HR can change them and everyone on that row is re-scored. "
              "Yellow Leader cells: on the ROLE row they re-weight every level of the role across IRIS; on a level row they win over the "
-             "ROLE row. 'Share' shows how much each parameter now counts. A person's own weightage on Talent Mapping wins over all of this.",
+             "ROLE row. 'Share' shows how much each parameter now counts. Leaders rate people on Talent Mapping; the weightage here sets how much each rating counts.",
              STAMP, width_cols=16)
     legend(ws, 4)
     groups = [("ROLE AND LEVEL", "1F3864", [("Job family", 20), ("Role ID", 8), ("Role · sub-family", 30), ("Type of work", 18),
@@ -1076,10 +1081,10 @@ def main(srcdir, simple=False):
     # ================================================================ Talent Mapping
     ws = ws_tm
     Y.banner(ws, "Talent Mapping — every person, top down",
-             "Sheet 7 · Read left to right: who they are → what they told us in the survey and what their manager sent → where IRIS placed "
-             "them → what the market says → how much each parameter counts · IRIS, Market, Leader, read live from their role, level "
-             "and lane on sheet 3 → how they rate · IRIS, then yours → your proposed level and band. Blank = nothing received. "
-             "Yellow = yours. Your columns stay blank until you give an input.", STAMP, width_cols=16)
+             "Sheet 7 · For each person: who they are → what they and their manager told us → where IRIS placed them → how much each "
+             "parameter counts → IRIS's rating, then yours → the result. To review: agree, and leave the yellow cells blank; or rate "
+             "1 to 5 only where you see it differently (sheet 4 says what 1, 3 and 5 mean); or set a level with the override. "
+             "Add a comment for HR. Click + above the columns to open the reference and calculation columns.", STAMP, width_cols=16)
     legend(ws, 4)
     groups = [
         ("WHO", "1F3864", [("Business", 10), ("Department", 18), ("Layer from the CEO", 7), ("Emp ID", 12), ("Employee name", 22),
@@ -1095,8 +1100,8 @@ def main(srcdir, simple=False):
                               ("Span vs the norm", 22), ("Radford / Mercer · SFIA 9", 18)]),
         ("WEIGHTAGE · IRIS BASE — live from 3. Role Ladder", "806000", [(f"Weightage IRIS · {n}", 9) for _, n in PARAMS]),
         ("WEIGHTAGE · MARKET — reference, sheet 6", "3A3838", [(f"Weightage Market · {n}", 9) for _, n in PARAMS]),
-        ("WEIGHTAGE · LEADER — yours for this person · VL L M H VH or 0–100", "BF8F00", [(f"Weightage Leader · {n}", 9) for _, n in PARAMS]),
-        ("WEIGHTAGE · IN USE — this person's, else the role ladder's", "595959", [(f"Weightage in use · {n}", 9) for _, n in PARAMS]),
+        ("WEIGHTAGE — how much each parameter counts for this role and level · set on sheet 3", "595959",
+         [(f"Weightage in use · {n}", 9) for _, n in PARAMS]),
         ("RATING · IRIS — 1 to 5 vs the level · blank = no input", "806000", [(f"Rating IRIS · {n}", 9) for _, n in PARAMS]),
         ("RATING · LEADER — yours · 1 to 5 vs the level", "BF8F00", [(f"Rating Leader · {n}", 9) for _, n in PARAMS]),
         ("LEADER PROPOSAL — blank until you give an input", "C00000", [("Leader override · any level", 10), ("Score shift · levels", 9),
@@ -1231,9 +1236,8 @@ def main(srcdir, simple=False):
             ix = lambda rng, kk: f'INDEX({rng},MATCH({kk},RL_KEY,0))'
             vals[f"Weightage IRIS · {pn}"] = f'=IFERROR(IF({ix("RL_I_" + pk, lk)}="","",{ix("RL_I_" + pk, lk)}),"")'
             vals[f"Weightage Market · {pn}"] = f'=IFERROR(IF({ix("RL_M_" + pk, lk)}="","",{ix("RL_M_" + pk, lk)}),"")'
-            wl, wu = col[f"Weightage Leader · {pn}"], col[f"Weightage in use · {pn}"]
-            vals[f"Weightage in use · {pn}"] = (f'=IF({wl}{r}<>"",{wl}{r},IFERROR(IF({ix("RL_E_" + pk, lk)}="","",'
-                                                f'{ix("RL_E_" + pk, lk)}),""))')
+            wu = col[f"Weightage in use · {pn}"]
+            vals[f"Weightage in use · {pn}"] = f'=IFERROR(IF({ix("RL_E_" + pk, lk)}="","",{ix("RL_E_" + pk, lk)}),"")'
             vals[f"Rating IRIS · {pn}"] = iris_r.get(pk, "")
             ri, rl = col[f"Rating IRIS · {pn}"], col[f"Rating Leader · {pn}"]
             vals[f"imp {pk}"] = f'=IF(ISNUMBER({wu}{r}),MAX(0,MIN(100,{wu}{r})),IFERROR(INDEX(WT_MID,MATCH({wu}{r},WT_KEY,0)),0))'
@@ -1244,8 +1248,7 @@ def main(srcdir, simple=False):
         vals["Anchor · IRIS as built"] = anchor
         ov = col["Leader override · any level"]
         rl0, rl1 = col[f"Rating Leader · {PARAMS[0][1]}"], col[f"Rating Leader · {PARAMS[-1][1]}"]
-        wl0, wl1 = col[f"Weightage Leader · {PARAMS[0][1]}"], col[f"Weightage Leader · {PARAMS[-1][1]}"]
-        vals["Inputs"] = (f'=COUNTA({wl0}{r}:{wl1}{r})+COUNTA({rl0}{r}:{rl1}{r})+IF({ov}{r}<>"",1,0)'
+        vals["Inputs"] = (f'=COUNTA({rl0}{r}:{rl1}{r})+IF({ov}{r}<>"",1,0)'
                           f'+IFERROR(INDEX(RL_LCNT,MATCH({lk},RL_KEY,0)),0)')
         sh = f'({col["Net live"]}{r}-{col["Anchor · IRIS as built"]}{r})'
         vals["Score shift · levels"] = f'=IF({col["Inputs"]}{r}=0,"",ROUND({sh},2))'
@@ -1310,17 +1313,17 @@ def main(srcdir, simple=False):
     dv_r = DataValidation(type="list", formula1="LIST_RATE", allow_blank=True, showErrorMessage=True, errorTitle="Rating",
                           error="Rate 1 to 5 against the level: 1 Well below · 2 Below · 3 Meets · 4 Above · 5 Well above.")
     dv_o = DataValidation(type="list", formula1="LIST_LEVELS", allow_blank=True)
-    dv_w = DataValidation(type="list", formula1="LIST_WT", allow_blank=True, errorStyle="warning", showErrorMessage=True,
-                          errorTitle="Weightage", error="Use VL, L, M, H or VH — or type a number from 0 to 100.")
     ws.add_data_validation(dv_r)
     ws.add_data_validation(dv_o)
-    ws.add_data_validation(dv_w)
-    dv_w.add(f"{col['Weightage Leader · ' + PARAMS[0][1]]}7:{col['Weightage Leader · ' + PARAMS[-1][1]]}{last}")
     dv_r.add(f"{col['Rating Leader · ' + PARAMS[0][1]]}7:{col['Rating Leader · ' + PARAMS[-1][1]]}{last}")
     dv_o.add(f"{col['Leader override · any level']}7:{col['Leader override · any level']}{last}")
     for c_, h, dark, title in cols:
         if title == "ENGINE":
             ws.column_dimensions[L(c_)].hidden = True
+        elif h in TM_HIDDEN or title.startswith(TM_HIDDEN_GROUPS):
+            ws.column_dimensions[L(c_)].outlineLevel = 1
+            ws.column_dimensions[L(c_)].hidden = True
+    ws.sheet_properties.outlinePr.summaryRight = False
     ws.freeze_panes = "F7"
     ws.auto_filter.ref = f"A6:{L(len(cols))}{last}"
     ws.sheet_view.zoomScale = 85
@@ -1423,16 +1426,14 @@ def main(srcdir, simple=False):
         return f'=IFERROR(IF(INDEX({Q(S_TM)}!${cl}$7:${cl}${last},$H$6)="","",INDEX({Q(S_TM)}!${cl}$7:${cl}${last},$H$6)),"")'
     sections = [
         ("WHO", ["Business", "Department", "Emp ID", "Employee name", "Current designation", "Reporting manager", "Total exp. · yrs",
-                 "Qualification", "Current level · as is"]),
-        ("IRIS PLACEMENT", ["Job family", "Role · sub-family", "Lane", "IRIS proposed level", "IRIS proposed band", "Standard title for the role and level",
-                            "Title change", "How IRIS placed them", "Structure flag"]),
-        ("MARKET", ["Market level · published weights", "Experience vs the level · market", "Span vs the norm", "Radford / Mercer · SFIA 9"]),
-        ("LEADER PROPOSAL", ["Score shift · levels", "Leader proposed level", "Leader proposed band", "Move vs IRIS",
-                             "Level in force · after the level rule", "Band in force", "Level rule · live", "Manager check · live", "Leader comment"]),
-        ("WHAT THEY TOLD US", ["Survey · questions answered", SURVEY_COL, "KRAs from the manager", "Performance · rating · potential · 9-box",
-                               "Evidence used for the ratings"]),
+                 "Qualification"]),
+        ("IRIS PLACEMENT", ["Job family", "Role · sub-family", "IRIS proposed level", "IRIS proposed band", "Standard title for the role and level",
+                            "Title change", "How IRIS placed them"]),
+        ("LEADER PROPOSAL", ["Leader override · any level", "Leader proposed level", "Move vs IRIS", "Level in force · after the level rule",
+                             "Band in force", "Level rule · live", "Leader comment"]),
+        ("WHAT THEY TOLD US", [SURVEY_COL, "KRAs from the manager", "Performance · rating · potential · 9-box", "Evidence used for the ratings"]),
     ]
-    for title, fields in sections[:4]:
+    for title, fields in sections[:3]:
         Y.header(ws.cell(r, 1, title), Y.NAVY, 10)
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
         r += 1
@@ -1450,19 +1451,18 @@ def main(srcdir, simple=False):
     Y.header(ws.cell(r, 1, "WEIGHTAGE AND RATINGS — by parameter"), Y.NAVY, 10)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
     r += 1
-    for j, h in enumerate(["Parameter", "Weightage · IRIS base", "Weightage · Market", "Weightage · in use", "Rating · IRIS · 1–5", "Rating · Leader · 1–5"], 1):
+    for j, h in enumerate(["Parameter", "Weightage · how much it counts", "Rating · IRIS · 1–5", "Rating · Leader · 1–5"], 1):
         Y.header(ws.cell(r, j, h), "595959")
     r += 1
     for pk, pn in PARAMS:
         ws.cell(r, 1, pn).font = Y.font(9, True)
-        for j, h in enumerate((f"Weightage IRIS · {pn}", f"Weightage Market · {pn}", f"Weightage in use · {pn}", f"Rating IRIS · {pn}",
-                               f"Rating Leader · {pn}"), 2):
+        for j, h in enumerate((f"Weightage in use · {pn}", f"Rating IRIS · {pn}", f"Rating Leader · {pn}"), 2):
             x = ws.cell(r, j, look(h))
             x.alignment = Alignment(horizontal="center")
             x.font = Y.font(10, True)
         r += 1
     r += 1
-    title, fields = sections[4]
+    title, fields = sections[3]
     Y.header(ws.cell(r, 1, title), Y.NAVY, 10)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
     r += 1
@@ -1565,10 +1565,6 @@ def main(srcdir, simple=False):
     if simple:
         wb.remove(ws_rm)
         wb.remove(ws_mb)
-        for c_, h, dark, title in tm_cols:   # fold away the reference columns; the engine and the inputs stay
-            if title.startswith(("MARKET", "WEIGHTAGE · IRIS BASE", "WEIGHTAGE · MARKET")):
-                ws_tm.column_dimensions[L(c_)].outlineLevel = 1
-                ws_tm.column_dimensions[L(c_)].hidden = True
 
     # ================================================================ How it works
     ws = ws_how
@@ -1592,10 +1588,9 @@ def main(srcdir, simple=False):
                                       "Levels map to Radford / Mercer codes, SFIA and peer experience ranges; every role's journey, IRIS against the "
                                       "market, is on sheet 5, and every reference and link is on the last sheet."),
         ("5 · Leaders give their view", "On sheet 7 you see, for each person, what IRIS proposes and why, and everything they told us in the "
-                                        "survey. Rate any parameter 1 to 5 against the level · sheet 4 says what each means; type a "
-                                        "weightage for this one person; re-weight a role or a single level of it on sheet 3; or set any "
-                                        "level with the override. Your proposed level and band appear as soon as you give an input, and "
-                                        "the manager check updates live."),
+                                        "survey. Agree and leave it blank, or rate 1 to 5 only the parameters you see differently · sheet 4 "
+                                        "says what each means; or set a level with the override, and add a comment for HR. The result "
+                                        "appears as soon as you give an input, held below the manager's level by the level rule."),
         ("Weightage · five steps", "How much a parameter matters for the role at that level, on a 0–100 importance scale in five 20-point "
                                    "steps: VL Very low 0–20 · L Low 20–40 · M Medium 40–60 · H High 60–80 · VH Very high 80–100. A step "
                                    "counts at its midpoint — 10, 30, 50, 70, 90 — the 1:3:5:7:9 odd steps of Saaty's relative-importance "
@@ -1605,9 +1600,8 @@ def main(srcdir, simple=False):
         ("Rating · five steps", "How the person works against the level's definition: 1 Well below — works at the level below · 2 Below · "
                                 "3 Meets · 4 Above · 5 Well above — already works at the level above. Each step is half a level: −1, −½, "
                                 "0, +½, +1."),
-        ("Weightage · where it comes from", "In use for a person = their own weightage typed on sheet 7; if blank, the leader's entry on their "
-                                            "level row on sheet 3; if blank, the leader's entry on their role's ROLE row; if "
-                                            "blank, the IRIS base. HR can change the IRIS base on sheet 3 — everyone at that role and level is "
+        ("Weightage · where it comes from", "In use for a person = the leader's entry on their level row on sheet 3; if blank, the "
+                                            "leader's entry on their role's ROLE row; if blank, the IRIS base. HR can change the IRIS base on sheet 3 — everyone at that role and level is "
                                             "re-scored at once. Market is shown beside it for reference."),
         ("The model in one line", "Weighted rating = Σ share × rating move. IRIS's placement is the anchor: the weighted rating with IRIS's "
                                   "ratings and IRIS's weightage as built. Change any weightage or rating and the shift = new weighted rating "

@@ -5,11 +5,11 @@ Two workbooks, built by one pipeline from the same data:
 | File | For | What it holds |
 |---|---|---|
 | `IRIS_JA_Master_v2.2.xlsx` | HR | Everything: 9 numbered sheets plus Backend Data and References & Benchmarks. Raw Data holds every bit of data received plus the analysis on file from every earlier version. |
-| `IRIS_JA_Simplified_v2.2.xlsx` | Business heads | The same live model in 7 numbered sheets plus Backend Data and References. Raw Data holds only what was received. The market reference columns on Talent Mapping are folded away; click + to open them. |
+| `IRIS_JA_Simplified_v2.2.xlsx` | Business heads | The same live model in 7 numbered sheets plus Backend Data and References. Raw Data holds only what was received. |
 | `IRIS_JA_QA_Report_v2.2.md` | CHRO and HR | The QA result, the figures that matter and the points to raise. It names people, so it travels with the workbooks only. |
 | `IRIS_JA_Hierarchy_Audit_v2.2.xlsx` | HR | Every reporting line checked against the level rule, and every person whose manager in another source file differs from the Employee Master. |
 
-Both files have no formula errors and pass every check in `build_v2/verify_model.py`: 48 checks on the Master and 44 on the Simplified. One check scans each file's XML for anything that makes Excel offer to repair it. All three files are also valid against the ECMA-376 SpreadsheetML schema.
+Both files have no formula errors and pass every check in `build_v2/verify_model.py`: 49 checks on the Master and 45 on the Simplified. One check scans each file's XML for anything that makes Excel offer to repair it. All three files are also valid against the ECMA-376 SpreadsheetML schema.
 
 ## What changed in v2.2
 
@@ -89,6 +89,16 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
   - text glitches
   
   Both files pass it with no findings.
+
+### Talent Mapping made simple for leaders
+- **Shown:** who the person is, what they and their manager told us, where IRIS placed them, how much each parameter counts, IRIS's rating, the leader's rating, and the result.
+- **Removed:** the optional per-person weightage. Weightage is set per role and level on sheet 3.
+- **Folded away behind +:** the reference and calculation columns. These are the market comparison, the IRIS base and market weightage, the evidence lines, the role ID and lane, the legacy level, the score shift and the manager check. Nothing is lost; click + above the columns to open them.
+- **What a leader does:**
+  - If they agree, they leave the yellow cells blank.
+  - If they see it differently, they rate 1 to 5 only the parameters concerned, or set a level with the override.
+  - Either way, they add a comment for HR.
+- **The Person Card shows the same simple view.**
 
 ### Hierarchy audit
 - **Every reporting line follows the level rule.** Each reportee sits below their manager, both at the IRIS level and at the level in force.

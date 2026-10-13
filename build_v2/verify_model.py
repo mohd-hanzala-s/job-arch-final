@@ -265,6 +265,16 @@ def glitches():
           f"links {bad_links[:2]} · long formulas {long_f} · tall rows {tall[:2]} · junk {junk} · blank headers {blank_hdr[:2]} · "
           f"validations {bad_dv[:2]} · names {dn_bad[:2]}")
     wb.close()
+    wb2 = openpyxl.load_workbook(OUTFILE)
+    tmw = wb2[N["TM"]]
+    hdr6 = {c.value: c.column_letter for c in tmw[6] if c.value}
+    hidden_ok = all(tmw.column_dimensions[hdr6[x]].hidden for x in BM.TM_HIDDEN if x in hdr6)
+    shown = [x for x, cl in hdr6.items() if not tmw.column_dimensions[cl].hidden]
+    check("Talent Mapping shows a leader only what they need: no per-person weightage, the reference and calculation columns "
+          "folded away behind +", hidden_ok and not any(str(x).startswith(("Weightage Leader", "Weightage Market", "Weightage IRIS", "imp ", "mv "))
+                                                   for x in shown) and "Rating Leader · Complexity & Expertise" in shown,
+          f"{len(shown)} columns shown of {len(hdr6)}")
+    wb2.close()
     xml = XC.scan(OUTFILE) + (XC.schema_scan(OUTFILE, os.environ["JA_XSD"]) if os.environ.get("JA_XSD") else [])
     check("Excel opens the file without a repair: defined names valid, every link internal or a valid URL, strings, styles, "
           "merges, columns, validations and numbers within Excel's rules (XML-level scan"
@@ -325,18 +335,11 @@ def live():
     rl.cell(lrow[bkey], lh["IRIS · Leadership & Strategy"]).value = "VH"
     rl.cell(lrow[bkey], lh["IRIS · Complexity & Expertise"]).value = 15
     used = set(by_key[bkey]) | {r for r in rows0 if role_of[r] == rkey}
-    # C · a leader types weightage for one person on Talent Mapping
-    cand = []
-    for r, v in rows0.items():
-        if r in used or not v[h0["Ladder key"]] or v[h0["IRIS proposed level"]] in ("E1", "E2", "D2"):
-            continue
-        rs = r_of(v)
-        top = max((k for k in PKEYS if rs[k] not in (None, "")), key=lambda k: rs[k], default=None)
-        if top and SC.R5_MOVE[int(rs[top])] - anc(v) >= 0.5:
-            cand.append((r, top))
-    p_row, p_top = cand[0]
+    # C · a leader rates one person 1 on every parameter: they move down, and the band follows
+    p_row = next(r for r, v in rows0.items() if r not in used and v[h0["Ladder key"]] and v[h0["IRIS proposed level"]] == "B2"
+                 and predict("B2", w_of(v), {k: 1 for k in PKEYS}, anc(v))[0] != "B2")
     for k in PKEYS:
-        ws.cell(p_row, hd[f"Weightage Leader · {pn[k]}"]).value = "VH" if k == p_top else 0
+        ws.cell(p_row, hd[f"Rating Leader · {pn[k]}"]).value = 1
     used.add(p_row)
     # D · a leader rates every parameter 5 for a B1, and sets an override for an A3
     t1 = next(r for r, v in rows0.items() if v[h0["IRIS proposed level"]] == "B1" and r not in used and v[h0["Ladder key"]])
@@ -387,11 +390,10 @@ def live():
           and str(got[t2][h["Level rule · live"]]).startswith("Held at") and not str(got[t2][h["Manager check · live"]]).startswith("⚠"),
           f"{got[t2][h['Level in force · after the level rule']]} · {got[t2][h['Level rule · live']]} · {got[t2][h['Manager check · live']]}")
     # C
-    wC = {k: ("VH" if k == p_top else 0) for k in PKEYS}
-    eC = expect(p_row, wC)
-    check("Live: weightage typed for one person on Talent Mapping re-scores them and changes their level and band",
+    eC = predict("B2", w_of(rows0[p_row]), {k: 1 for k in PKEYS}, anc(rows0[p_row]))[0]
+    check("Live: a leader rating one person 1 on every parameter moves them down to exactly the level the rule gives, and the band follows",
           got[p_row][h["Leader proposed level"]] == eC and eC != rows0[p_row][h0["IRIS proposed level"]]
-          and got[p_row][h["Leader proposed band"]] not in (None, ""),
+          and got[p_row][h["Leader proposed band"]] not in (None, "") and got[p_row][h["Band in force"]] not in (None, ""),
           f"{rows0[p_row][h0['IRIS proposed level']]} → {got[p_row][h['Leader proposed level']]} · expected {eC} · band {got[p_row][h['Leader proposed band']]}")
     # A
     in_role = [r for r in rows0 if role_of[r] == rkey]

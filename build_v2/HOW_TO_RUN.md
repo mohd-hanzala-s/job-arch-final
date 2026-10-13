@@ -30,7 +30,7 @@ export JA_WORK=<a scratch folder>   # for the LibreOffice recalculation, default
 python3 build_model.py <source folder>     # writes the Master and the Simplified, about 12 minutes
 python3 hier_audit.py  <source folder>     # writes the Hierarchy Audit from the Master
 
-# checks: 48 on the Master, 44 on the Simplified, including live edits recalculated in LibreOffice
+# checks: 49 on the Master, 45 on the Simplified, including live edits recalculated in LibreOffice
 JA_FILE=<workbook> JA_SRC=<source folder> python3 verify_model.py
 
 # the cross-sheet QA sweep: counts, levels, roles, titles, managers, privacy, text glitches
