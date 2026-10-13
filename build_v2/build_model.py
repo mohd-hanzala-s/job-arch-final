@@ -1338,8 +1338,10 @@ def main(srcdir, simple=False):
     ws.add_data_validation(dv)
     dv.add("B5")
     ws["H5"] = "Row"
+    # the name list runs in Talent Mapping's order, so a picked name gives the row directly — consultants without an
+    # Emp ID share a placeholder, and matching on the ID would always find the first of them
     ws["H6"] = (f'=IFERROR(IF(TRIM($B$6)<>"",MATCH(TRIM($B$6),{Q(S_TM)}!${E}$7:${E}${last},0),'
-                f'MATCH(INDEX(PEOPLE_ID,MATCH($B$5,LIST_PEOPLE,0)),{Q(S_TM)}!${E}$7:${E}${last},0)),"")')
+                f'MATCH($B$5,LIST_PEOPLE,0)),"")')
     ws["H5"].font = ws["H6"].font = Y.font(8, False, "808080")
     ws["A8"] = "Showing"
     ws["A8"].font = Y.font(10, True)

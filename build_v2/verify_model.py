@@ -355,6 +355,11 @@ def live():
     # E · a vacant level
     vac = next(r for r in range(7, rl.max_row + 1) if rl.cell(r, lh["People in IRIS"]).value == "Vacant" and rl.cell(r, lh["Row"]).value == "level")
     rl.cell(vac, lh["Leader · Business Impact"]).value = "H"
+    # G · the Person Card shows the person picked, including a consultant who shares a placeholder Emp ID
+    pc_ = wb[N["PC"]]
+    cons = [r for r, v in rows0.items() if str(v[h0["Emp ID"]]).startswith("No Emp ID")]
+    pick_c = cons[-1]
+    pc_["B5"].value = f"{rows0[pick_c][h0['Employee name']]} · {rows0[pick_c][h0['Emp ID']]}"
     wb.save(os.path.join(work, "e.xlsx"))
     out = X.recalc_copy(os.path.join(work, "e.xlsx"), work)
     v = openpyxl.load_workbook(out, read_only=True, data_only=True)
@@ -427,6 +432,9 @@ def live():
           and abs(sum(float(vr[lx[f"Share · {pn[k]}"]] or 0) for k in PKEYS) - 1) < 1e-6)
     br = lr[lrow[bkey] - 6]
     check("Live: the Role Ladder counts HR's base changes", br[lx["Changes here"]] == 2, str(br[lx["Changes here"]]))
+    shown = list(v[N["PC"]].iter_rows(min_row=8, max_row=8, values_only=True))[0][1]
+    check("Live: the Person Card shows exactly the person picked — even a consultant who shares a placeholder Emp ID",
+          str(shown).startswith(rows0[pick_c][h0["Employee name"]]), f"{shown} · picked {rows0[pick_c][h0['Employee name']]} of {len(cons)} consultants")
     errs = sum(1 for ws_ in v.worksheets for row in ws_.iter_rows(values_only=True) for x in row if isinstance(x, str) and re.match(r"^#(REF|N/A|VALUE|NAME|DIV)", x))
     check("Live: no formula errors after the edits", errs == 0, str(errs))
     v.close()
