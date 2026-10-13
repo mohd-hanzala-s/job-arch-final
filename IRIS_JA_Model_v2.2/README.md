@@ -8,7 +8,7 @@ Two workbooks, built by one pipeline from the same data:
 | `IRIS_JA_Simplified_v2.2.xlsx` | Business heads | The same live model in 7 numbered sheets plus Backend Data and References. Raw Data holds only what was received. The market reference columns on Talent Mapping are folded away; click + to open them. |
 | `IRIS_JA_Hierarchy_Audit_v2.2.xlsx` | HR | Every reporting line checked against the level rule, and every person whose manager in another source file differs from the Employee Master. |
 
-Both files have no formula errors and pass every check in `build_v2/verify_model.py`: CHECKS_M checks on the Master and CHECKS_S on the Simplified. One check scans the file's XML for anything that makes Excel offer to repair it.
+Both files have no formula errors and pass every check in `build_v2/verify_model.py`: 48 checks on the Master and 44 on the Simplified. One check scans each file's XML for anything that makes Excel offer to repair it. All three files are also valid against the ECMA-376 SpreadsheetML schema.
 
 ## What changed in v2.2
 
@@ -73,10 +73,12 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 
 ### Hierarchy audit
 - **Every reporting line follows the level rule.** Each reportee sits below their manager, both at the IRIS level and at the level in force.
+- **558 reporting lines were checked.** Every one passes: no reportee sits at or above their manager.
 - **No reporting problems found:** no loops, no self-reports, and every named manager is in the roster.
+- **Three people are at the top of the organisation.** 25 consultants are outside the ladder. 20 of them have no Emp ID and no manager on record.
 - **The model uses the managers in the Employee Master of 23 September.** It matches the Master for every person.
 - **57 people have a different manager in another source file.** The files are the older Employee Master, the CARBON files and the iFile and iDEAL talent mapping. Nothing was changed; the audit lists each one for HR to confirm.
-- **The CARBON Mapping Master proposes 39 new managers.** These are listed with a level-rule check, but not applied.
+- **The CARBON Mapping Master proposes 40 new managers.** These are listed with a level-rule check, but not applied.
 
 ## Sheets (Master)
 
@@ -108,7 +110,7 @@ See How it works in either file for the full explanation.
 ## Rebuild and check
 
 ```
-cd build_v2
+cd build_v2   # or code/ in final.zip; see HOW_TO_RUN.md
 JA_V1=<folder with the six v1 workbooks and the Employee Masters> \
 python3 build_model.py <folder with the source files: the five talent-mapping files and the All-Sources file>
 JA_FILE=<the workbook> JA_SRC=<the same source folder> python3 verify_model.py
