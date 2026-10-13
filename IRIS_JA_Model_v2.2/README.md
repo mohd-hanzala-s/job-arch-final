@@ -22,8 +22,13 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 ### No overlap in a team
 - **Every reportee sits in a lower band than their manager.** The only exception, agreed earlier, is the CEO and the Chief Officers, who share Band E.
 - **Deep reporting chains** are resolved, not flagged. Where a chain is deeper than the bands, the manager in the middle takes the Player-Coach step B+ or C+. That is McKinsey's player/coach archetype (S75): a manager who still delivers.
-- **One CARBON line was still too deep:** CEO → CRO → Anuradha RK → Suman Adhikary → five more layers. It follows the line CARBON's own Mapping Master proposes, with Suman reporting to Dixit Jasani (the CRO). This is shown on Suman's row.
-- **Result:** 18 people move down and 54 move up, with 0 structure flags.
+- **Everyone reports to their original manager.** No reporting line is changed.
+- **One structure exception remains.** One CARBON reporting line is nine people deep: CEO → Dixit Jasani → Anuradha RK → Suman Adhikary → five more layers. With the original lines kept, that is deeper than the seven bands (A · B · B+ · C · C+ · D · E) can separate. So one pair has to share a band, which can't be avoided without changing who reports to whom:
+  - Suman Adhikary (D1) and Anuradha RK (D2) share Band D.
+  - Suman is still one level below Anuradha.
+  - The pair is marked "Structure exception" in the Structure flag and Manager check columns.
+  - Changing that line, or Anuradha's role, would remove it. That is a decision for HR and the business.
+- **Result:** the moves needed and the exception are shown on How it works.
 - **The rule also works live.**
   - If a leader's input moves a manager down, their reportees are held in the band below. "Band rule · live" explains why, and the effect cascades down the line.
   - If there is no band left (under an A-level manager), the manager check shows a structure-decision warning.

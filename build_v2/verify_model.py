@@ -47,8 +47,12 @@ def main():
     check("Leader columns blank until a leader gives an input", all(r[h["Leader proposed level"]] in (None, "") for r in d))
     mc = collections.Counter(r[h["Manager check · live"]] for r in d)
     flagged = sum(1 for r in d if r[h["Structure flag"]])
-    check("No overlap: every reportee sits in a lower band than their manager (CEO and Chief Officers in Band E the agreed exception)",
-          not any(str(k).startswith("⚠") for k in mc) and flagged == 0, f"{dict(mc)} · flagged {flagged}")
+    exc = mc.get("Structure exception · chain deeper than the bands", 0)
+    check("No overlap: every reportee sits in a lower band than their manager — CEO and Chief Officers in Band E agreed; a chain "
+          "deeper than the seven bands is the only marked structure exception, still one level below the manager",
+          not any(str(k).startswith("⚠") for k in mc) and exc == flagged and flagged <= 1, f"{dict(mc)} · flagged {flagged}")
+    orig = all(J.text(r[h["Reporting manager"]]).find(" · was ") < 0 for r in d)
+    check("Everyone reports to their original manager", orig)
     check("Before any input, the level in force is IRIS's level for everyone and the band rule holds nobody back",
           all(r[h["Level in force · after the band rule"]] == r[h["IRIS proposed level"]] and not r[h["Band rule · live"]] for r in d))
     regular = [lv for lv in V.LEVELS_STD if lv not in ("A1", "E2")]

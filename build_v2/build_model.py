@@ -159,39 +159,6 @@ def place(org, pen=6.0, up_cost=2.0, span=2):
     return new, flag
 
 
-def recommended_lines(org, by_i, srcdir):
-    """Reporting lines the business itself has proposed (CARBON Mapping Master · New Reporting Manager), applied only where
-    the current line puts a manager and reportee in the same band whatever the levels: a reporting chain deeper than the bands.
-    Returns {person: (old manager, new manager)}."""
-    path = next(iter(sorted(__import__("glob").glob(os.path.join(srcdir, "*CARBON_Talent_Mapping*.xlsx")))), None)
-    if not path:
-        return {}
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    rows = list(wb["Mapping Master"].iter_rows(values_only=True))
-    wb.close()
-    h = {J.text(x): j for j, x in enumerate(rows[0])}
-    by_name = {J.nname(p["name"]): i for i, p in by_i.items()}
-    sys.setrecursionlimit(10000)
-
-    def depth(i):
-        return 1 + max((depth(k) for k in org.kids[i]), default=0)
-    out = {}
-    for r in rows[1:]:
-        if J.text(r[h["Change in RM?"]]) != "Yes":
-            continue
-        i, nm = by_name.get(J.nname(r[h["Employee Name"]])), by_name.get(J.nname(r[h["New Reporting Manager"]]))
-        if i is None or nm is None or org.mgr.get(i) == nm:
-            continue
-        m = org.mgr.get(i)
-        # bands below the manager's band that a chain of this depth needs: A, B, B+, C, C+ under D; more than that cannot fit
-        if m is not None and V.band(org.level[m]) == "D" and V.band(org.level[i]) == "D" and depth(i) > 5:
-            org.kids[m].remove(i)
-            org.kids[nm].append(i)
-            org.mgr[i] = nm
-            out[i] = (m, nm)
-    return out
-
-
 def headers(ws, groups, hrow=6):
     """Column headers, with each group's title merged across its columns so it is never cut off."""
     out = _headers(ws, groups, hrow)
@@ -432,8 +399,11 @@ def main(srcdir, simple=False):
     F = P.Folds(M, people)
     R = load_reference(J.MASTER)
     H = {h: i for i, h in enumerate(M["tm_hdr"])}
-    line_changes = recommended_lines(org, by_i_all := {p["i"]: p for p in people}, srcdir)
     new, flag = place(org)
+    sys.setrecursionlimit(10000)
+
+    def depth_below(i):
+        return max((1 + depth_below(k) for k in org.kids[i]), default=0)
     order = [i for i, d in org.top_down()]
     depth = dict(org.top_down())
     by_i = {p["i"]: p for p in people}
@@ -593,7 +563,8 @@ def main(srcdir, simple=False):
     name_range(wb, "LIST_R5", S_BE, f"$A${top}:$A${r - 1}")
     r += 1
     for j, h in enumerate(["Level", "Value", "Band", "Band rank", "Standard ladder", "Player-Coach ladder",
-                           "Highest level a reportee may hold · standard ladder", "· Player-Coach ladder"], 1):
+                           "Highest level a reportee may hold · standard ladder", "· Player-Coach ladder",
+                           "Structure exception · one level below · standard", "· Player-Coach"], 1):
         Y.header(ws.cell(r, j, h), Y.NAVY)
     r += 1
     top = r
@@ -607,11 +578,14 @@ def main(srcdir, simple=False):
             return "E1"
         ok = [x for x in ladder if BANDS.index(V.band(x)) < BANDS.index(bm)]
         return ok[-1] if ok else None
+    def below_of(m, ladder):
+        ok = [x for x in ladder if V.VAL[x] < V.VAL.get(m, 0)]
+        return ok[-1] if ok and V.band(m) in BANDS else None
     for k, lv in enumerate(V.LEVELS_PC + ["X1", "X2", "X3"]):
         b = V.band(lv)
         vals = (lv, V.VAL.get(lv, 0), b, BANDS.index(b) + 1 if b in BANDS else 0,
                 V.LEVELS_STD[k] if k < len(V.LEVELS_STD) else None, V.LEVELS_PC[k] if k < len(V.LEVELS_PC) else None,
-                cap_for(lv, V.LEVELS_STD), cap_for(lv, V.LEVELS_PC))
+                cap_for(lv, V.LEVELS_STD), cap_for(lv, V.LEVELS_PC), below_of(lv, V.LEVELS_STD), below_of(lv, V.LEVELS_PC))
         for j, v in enumerate(vals, 1):
             cell(ws, r, j, v, "FFFFFF", j == 1)
         r += 1
@@ -623,6 +597,8 @@ def main(srcdir, simple=False):
     name_range(wb, "LIST_LEVELS", S_BE, f"$A${top}:$A${r - 1}")
     name_range(wb, "CAP_STD", S_BE, f"$G${top}:$G${r - 1}")
     name_range(wb, "CAP_PC", S_BE, f"$H${top}:$H${r - 1}")
+    name_range(wb, "BELOW_STD", S_BE, f"$I${top}:$I${r - 1}")
+    name_range(wb, "BELOW_PC", S_BE, f"$J${top}:$J${r - 1}")
     r += 1
     Y.header(ws.cell(r, 1, "People · for the Person Card"), Y.NAVY)
     r += 1
@@ -1081,7 +1057,7 @@ def main(srcdir, simple=False):
                                                                        ("Manager check · live", 24), ("Leader comment", 30)]),
         ("ENGINE", "595959", [(f"imp {k}", 5) for k in PKEYS] + [(f"mv {k}", 5) for k in PKEYS] +
          [("Inputs", 5), ("Net live", 6), ("Anchor · IRIS as built", 6), ("Ladder key", 12), ("Role key", 12),
-          ("Level before the band rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6)]),
+          ("Level before the band rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6), ("Structure exception", 6)]),
     ]
     cols = headers(ws, groups)
     col = {h: L(c_) for c_, h, _, _ in cols}
@@ -1132,15 +1108,19 @@ def main(srcdir, simple=False):
         else:
             how = (f"Evidence level {model} · moved {'down' if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else 'up'} to {lv} so that no reportee shares "
                    f"a band with their manager, with the fewest moves across IRIS" + (" · pay and title protected for one cycle" if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else ""))
-        if i in line_changes:
-            how += (f" · reports to {by_i[line_changes[i][1]]['name']} from this model on, as CARBON's own Mapping Master proposes, instead of "
-                    f"{by_i[line_changes[i][0]]['name']}: both lead a department in Band D, and the line under them is too deep for the "
-                    "bands to separate them otherwise")
         if p["i"] in changed:
             how += f" · {'Band E · Enterprise Leadership' if changed[p['i']][2] == V.ENT_FAMILY else 'department head · Executive Leadership · Business Head'}"
         m = org.mgr[i]
-        sflag = (f"Deep chain: shares a band with manager {by_i[m]['name']} · {new[m]} · decide: report to the next manager up, or merge "
-                 "this layer") if i in flag else ""
+        if i in flag:
+            chain_, x_ = [], i
+            while x_ is not None:
+                chain_.append(by_i[x_]["name"])
+                x_ = org.mgr[x_]
+            sflag = (f"Structure exception: shares Band {V.band(new[m])} with manager {by_i[m]['name']} ({new[m]}). The reporting line "
+                     f"{' → '.join(reversed(chain_))} → … runs {depth_below(i) + len(chain_) - 1} layers deep, more than the seven bands "
+                     "A · B · B+ · C · C+ · D · E can separate. Reporting kept as it is; held one level below the manager.")
+        else:
+            sflag = ""
         des = J.text(tm[H["Final designation"]])
         std, title_change = std_title(rr, lv, des, tm[H["Track"]], J.text(tm[H["FINAL LEVEL"]]))
         # market
@@ -1172,10 +1152,8 @@ def main(srcdir, simple=False):
         vals = {
             "Business": p["biz"], "Department": blank_if_none(tm[H["Department"]]), "Layer from the CEO": depth[i], "Emp ID": p["emp"],
             "Employee name": p["name"], "Current designation": J.text(tm[H["Current designation"]]),
-            "Reporting manager": (f"{by_i[line_changes[i][1]]['name']} · was {J.text(tm[H['Reporting manager']])}" if i in line_changes
-                                  else blank_if_none(tm[H["Reporting manager"]])),
-            "Manager Emp ID": (by_i[line_changes[i][1]]["emp"] if i in line_changes else
-                               (links[1] if links[1] not in ("—", "Not in this file") else "")),
+            "Reporting manager": blank_if_none(tm[H["Reporting manager"]]),
+            "Manager Emp ID": links[1] if links[1] not in ("—", "Not in this file") else "",
             "Total exp. · yrs": tm[H["Total exp. · yrs"]] if yrs is not None else "", "Qualification": J.text(tm[H["Qualification"]]) if q is not None else "",
             "Current level · as is": J.text(tm[H["Current level"]]) if "Not in current" not in J.text(tm[H["Current level"]]) else "",
             "Survey · questions answered": f"{sv[0]} of 20" if sv[0] else "", SURVEY_COL: shared,
@@ -1237,8 +1215,11 @@ def main(srcdir, simple=False):
         rw, mi, cp = col["Level before the band rule"], col["Manager's level in force"], col["Highest level allowed"]
         vals["Level before the band rule"] = f'=IF({lp}{r}<>"",{lp}{r},{iris_c}{r})'
         vals["Manager's level in force"] = f'=IF(${mg}{r}="","",IFERROR(INDEX(${INF}$7:${INF}${last},MATCH(${mg}{r},${E}$7:${E}${last},0)),""))'
+        ex = col["Structure exception"]
+        vals["Structure exception"] = 1 if i in flag else ""
         vals["Highest level allowed"] = (f'=IF(OR({mi}{r}="",LEFT({mi}{r},1)="X",LEFT({rw}{r},1)="X"),"",'
-                                         f'IFERROR(INDEX(IF(OR({rw}{r}="B+",{rw}{r}="C+"),CAP_PC,CAP_STD),MATCH({mi}{r},B_LVL,0)),""))')
+                                         f'IFERROR(INDEX(IF({ex}{r}=1,IF(OR({rw}{r}="B+",{rw}{r}="C+"),BELOW_PC,BELOW_STD),'
+                                         f'IF(OR({rw}{r}="B+",{rw}{r}="C+"),CAP_PC,CAP_STD)),MATCH({mi}{r},B_LVL,0)),""))')
         vals["Level in force · after the band rule"] = (f'=IF({cp}{r}="",{rw}{r},IF(INDEX(B_VAL,MATCH({rw}{r},B_LVL,0))>'
                                                         f'INDEX(B_VAL,MATCH({cp}{r},B_LVL,0)),{cp}{r},{rw}{r}))')
         vals["Band in force"] = (f'=IFERROR(CHOOSE(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0)),"Band A · Practitioner",'
@@ -1251,8 +1232,10 @@ def main(srcdir, simple=False):
             f'=IFERROR(IF(OR(${mg}{r}="",{mf}=""),"—",IF(OR(LEFT({INF}{r},1)="X",LEFT({mf},1)="X"),"—",'
             f'IF(AND(LEFT({INF}{r},1)="E",LEFT({mf},1)="E"),"Exception · Band E",'
             f'IF(AND({cp}{r}="",LEFT({mf},1)="A"),"⚠ No band left below an A-level manager — a structure decision",'
+            f'IF(AND({ex}{r}=1,INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))<INDEX(B_VAL,MATCH({mf},B_LVL,0))),'
+            '"Structure exception · chain deeper than the bands",'
             f'IF(INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))>=INDEX(B_VAL,MATCH({mf},B_LVL,0)),"⚠ At or above the manager",'
-            f'IF(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0))=INDEX(B_RANK,MATCH({mf},B_LVL,0)),"⚠ Same band as the manager","OK")))))),"—")')
+            f'IF(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0))=INDEX(B_RANK,MATCH({mf},B_LVL,0)),"⚠ Same band as the manager","OK"))))))),"—")')
         xs = put_row(ws, r, cols, vals)
         for h, x in xs.items():
             if h.startswith(("Weightage", "Rating")):
@@ -1558,8 +1541,9 @@ def main(srcdir, simple=False):
         ("3 · We placed everyone", "Each person got a job family, a sub-family, a role and a level from the evidence. Then we moved the fewest "
                                    f"people needed so that no one shares a band with their manager: {moved_dn} down, pay and title protected, "
                                    f"and {moved_up} up — including managers who still deliver taking the Player-Coach step B+ or C+ where "
-                                   f"a reporting chain is deep. {len(line_changes)} reporting line follows CARBON's own recommended "
-                                   f"structure. Result: no manager and reportee share a band; {len(flag)} structure flags."),
+                                   "a reporting chain is deep. Everyone reports to their original manager. "
+                                   f"{len(flag)} pair{'s' if len(flag) != 1 else ''} in a reporting chain deeper than the seven bands "
+                                   "cannot be separated and is marked as a structure exception · sheet 7, 'Structure flag'."),
         ("4 · We checked the market", "Every parameter's weight is set against published job-evaluation methods — Korn Ferry Hay, Mercer "
                                       "IPE and five public plans — and shown in five steps, VL to VH, with the numbers behind it · sheet 6. "
                                       "Levels map to Radford / Mercer codes, SFIA and peer experience ranges; every role's journey, IRIS against the "
@@ -1593,8 +1577,9 @@ def main(srcdir, simple=False):
                                    "weightage. Band A, the Player-Coach steps and Bands D and E have one path."),
         ("No overlap in a team", "A reportee always sits in a lower band than their manager; only the CEO and the Chief Officers share "
                                  "Band E. Where a reporting chain is deeper than the bands, the manager in the middle takes the "
-                                 "Player-Coach step B+ or C+ — the player/coach manager who still delivers (S75). One line was too deep "
-                                 "even so: it follows the reporting line CARBON's own mapping master proposes. The rule also works live: "
+                                 "Player-Coach step B+ or C+ — the player/coach manager who still delivers (S75). Everyone keeps their original "
+                                 "manager, so a chain deeper than the seven bands keeps one shared band, marked as a structure exception "
+                                 "and held one level below the manager. The rule also works live: "
                                  "if a leader moves a manager down, their reportees are held in the band below and flagged."),
         ("The seven parameters", "Complexity & Expertise · Autonomy & Decision · Accountability & Impact · Leadership & Strategy · "
                                  "Business Impact · Experience · Education."),
