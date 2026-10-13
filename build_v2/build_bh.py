@@ -127,6 +127,9 @@ def load_reference(src):
     f4 = list(wb["F4. Levels & Bands"].iter_rows(min_row=17, max_row=31, values_only=True))
     hdr = [J.text(h) for h in f4[0]]
     R["f4"] = {J.text(r[1]): dict(zip(hdr, [J.text(x) for x in r])) for r in f4[1:]}
+    for d_ in R["f4"].values():   # "None · guides …" in the source means no direct reports, not a missing value
+        if d_.get("Span of control", "").startswith("None"):
+            d_["Span of control"] = "No direct reports" + d_["Span of control"][4:]
     grid = list(wb["1d. Weightage Matrix"].iter_rows(min_row=166, max_row=179, values_only=True))
     R["grid"] = {}
     for r in grid:

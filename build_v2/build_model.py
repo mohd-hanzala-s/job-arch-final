@@ -237,6 +237,20 @@ def std_title(rr, lv, des, track, model_lv=None):
     return std, f"{des} → {std}"
 
 
+def person_title(rr, lv, tm, H):
+    """The standard title for a person and what changes for them, measured from the title they hold today: HR's final
+    designation sets the function named after the dash, but if their current designation is already the standard title,
+    nothing changes."""
+    des = J.text(tm[H["Final designation"]])
+    std, change = std_title(rr, lv, des, tm[H["Track"]], J.text(tm[H["FINAL LEVEL"]]))
+    cur = J.text(tm[H["Current designation"]]) or des
+    if cur == std:
+        return std, ""
+    if change and cur != des:
+        change = change.replace(des, cur, 1)
+    return std, change
+
+
 def blank_if_none(v):
     """'Not provided · HRIS' and the like mean nothing was received: the cell stays blank."""
     t = J.text(v)
@@ -294,7 +308,8 @@ def descriptors(R, fam, lv, cats, cj, work):
 
 def role_levels(fam, sub, tg, held):
     """Every level a role can be held at, top down — held or vacant. IC roles stop at D1 (the IC track ends there);
-    Business Heads run C1 to D2; the two Band E roles are one level each; Consultants stay outside the ladder."""
+    Manager roles stop at E1 (CXO of the function); Business Heads run C1 to D2; the two Band E roles are one level each;
+    Consultants stay outside the ladder."""
     held = {x for x in held if V.band(x) not in ("X", "")}
     if tg == "Consultant":
         return []
@@ -304,8 +319,8 @@ def role_levels(fam, sub, tg, held):
         base = ["C1", "C2", "C+", "D1", "D2"]
     elif tg == "IC":
         base = [x for x in V.LEVELS_PC if V.VAL[x] <= V.VAL["D1"]]
-    else:
-        base = list(V.LEVELS_PC)
+    else:   # a function's ladder tops out at E1 (CXO of the function); E2 is the one enterprise CEO role
+        base = [x for x in V.LEVELS_PC if V.VAL[x] <= V.VAL["E1"]]
     return sorted(set(base) | held, key=lambda x: -V.VAL[x])
 
 
@@ -1044,7 +1059,7 @@ def main(srcdir, simple=False):
                                                                        ("Manager check · live", 24), ("Leader comment", 30)]),
         ("ENGINE", "595959", [(f"imp {k}", 5) for k in PKEYS] + [(f"mv {k}", 5) for k in PKEYS] +
          [("Inputs", 5), ("Net live", 6), ("Anchor · IRIS as built", 6), ("Ladder key", 12), ("Role key", 12),
-          ("Level before the band rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6)]),
+          ("Level before the level rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6)]),
     ]
     cols = headers(ws, groups)
     col = {h: L(c_) for c_, h, _, _ in cols}
@@ -1090,7 +1105,9 @@ def main(srcdir, simple=False):
         q = qual_rank(tm[H["Qualification"]])
         iris_r["Edu"] = "" if V.band(lv) not in BANDS else SC.edu5(q, 1 if V.VAL[lv] < 6 else 2)
         model = J.text(tm[H["FINAL LEVEL"]])
-        if lv == model:
+        if V.band(lv) not in BANDS:
+            how = f"Consultant · {lv} · outside the ladder: not levelled by the evidence and not checked against a reporting line"
+        elif lv == model:
             how = f"Placed at {lv} by the evidence: six ratings × market-derived weights and rules R1–R13 · no move needed for the reporting line"
         else:
             how = (f"Evidence level {model} · moved {'down' if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else 'up'} to {lv} so that every reportee "
@@ -1107,8 +1124,7 @@ def main(srcdir, simple=False):
                      f"{' → '.join(reversed(chain_))} → … ({depth_below(i) + len(chain_)} people deep).")
         else:
             sflag = ""
-        des = J.text(tm[H["Final designation"]])
-        std, title_change = std_title(rr, lv, des, tm[H["Track"]], J.text(tm[H["FINAL LEVEL"]]))
+        std, title_change = person_title(rr, lv, tm, H)
         # market
         mlev = ""
         prg = level_rg(lv, rr["tg"]) if rr["tg"] != "Consultant" else None
@@ -1133,7 +1149,7 @@ def main(srcdir, simple=False):
         reps = len([k_ for k_ in org.kids[i] if V.band(new[k_]) != "X"])
         span_txt = ""
         if reps:
-            span_txt = f"{reps} direct reports · norm {R['f4'].get(lv, {}).get('Span of control', '—')}"
+            span_txt = f"{reps} direct report{'s' if reps != 1 else ''} · norm {R['f4'].get(lv, {}).get('Span of control', '') or '—'}"
         cr = R["cross"].get(lv, [])
         vals = {
             "Business": p["biz"], "Department": blank_if_none(tm[H["Department"]]), "Layer from the CEO": depth[i], "Emp ID": p["emp"],
@@ -1198,8 +1214,8 @@ def main(srcdir, simple=False):
         vals["Move vs IRIS"] = (f'=IF({lp}{r}="","",IF({lp}{r}={iris_c}{r},"• Same",IF(INDEX(B_VAL,MATCH({lp}{r},B_LVL,0))>'
                                 f'INDEX(B_VAL,MATCH({iris_c}{r},B_LVL,0)),"▲ Up","▼ Down")))')
         mg = col["Manager Emp ID"]
-        rw, mi, cp = col["Level before the band rule"], col["Manager's level in force"], col["Highest level allowed"]
-        vals["Level before the band rule"] = f'=IF({lp}{r}<>"",{lp}{r},{iris_c}{r})'
+        rw, mi, cp = col["Level before the level rule"], col["Manager's level in force"], col["Highest level allowed"]
+        vals["Level before the level rule"] = f'=IF({lp}{r}<>"",{lp}{r},{iris_c}{r})'
         vals["Manager's level in force"] = f'=IF(${mg}{r}="","",IFERROR(INDEX(${INF}$7:${INF}${last},MATCH(${mg}{r},${E}$7:${E}${last},0)),""))'
         vals["Highest level allowed"] = (f'=IF(OR({mi}{r}="",LEFT({mi}{r},1)="X",LEFT({rw}{r},1)="X"),"",'
                                          f'IFERROR(INDEX(IF(OR({rw}{r}="B+",{rw}{r}="C+"),BELOW_PC,BELOW_STD),MATCH({mi}{r},B_LVL,0)),""))')
@@ -1517,7 +1533,7 @@ def main(srcdir, simple=False):
         ("2 · We built the ladder", "There was no level framework. From the answers and the market we built one ladder of 12 levels in five "
                                     "bands, plus two Player-Coach steps. Each level has its own experience range, scope and span, so the "
                                     "levels do not overlap · sheet 2. Then a ladder for every role — a role is a sub-family — from A1 "
-                                    "Intern to E2, with IC and Manager lanes in Bands B and C, including roles and levels nobody holds "
+                                    "Intern up to E1, the head of the function (E2 is the one enterprise CEO role), with IC and Manager lanes in Bands B and C, including roles and levels nobody holds "
                                     "yet, each with its weightage and the reason for it · sheet 3."),
         ("3 · We placed everyone", "Each person got a job family, a sub-family, a role and a level from the evidence. Then we moved the fewest "
                                    f"people needed so that every reportee sits at a lower level than their manager: {moved_dn} down, pay and "
@@ -1615,7 +1631,7 @@ def main(srcdir, simple=False):
     os.makedirs(work, exist_ok=True)
     n_f, errors = X.cache_values(OUTFILE, work)
     print(f"Wrote {OUTFILE}: people {len(order)} · roles {len(fw)} · moved down {moved_dn} up {moved_up} · structure flags {len(flag)} · "
-          f"title changes {sum(1 for i in order if std_title(roles[by_i[i]['role']], new[i], by_i[i]['tm'][H['Final designation']], by_i[i]['tm'][H['Track']], J.text(by_i[i]['tm'][H['FINAL LEVEL']]))[1])} · "
+          f"title changes {sum(1 for i in order if person_title(roles[by_i[i]['role']], new[i], by_i[i]['tm'], H)[1])} · "
           f"formulas {n_f} · errors {len(errors)}")
     if errors:
         print(errors[:10])

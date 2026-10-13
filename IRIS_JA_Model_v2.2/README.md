@@ -14,7 +14,7 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 
 ### The framework is role-based
 - **A role is a sub-family**, such as "Front-End / UI Development". There are 64 roles, held or not yet held.
-- Every role runs on one shared ladder from A1 Intern to E2.
+- Every role runs on one shared ladder from A1 Intern up to E1, the head of the function. E2 is the one enterprise CEO role.
   - In Bands B and C a role has two lanes, IC and Manager. This is the dual career path, and the market weighs the lanes differently.
   - Band A, the Player-Coach steps (B+, C+) and Bands D and E have one shared path.
 - **Why:** job architecture keeps families and sub-families separate from levels, and the levels mean the same in every family (S78 Payscale, S80 Mercer). Parallel IC and manager tracks are the standard dual ladder (S79 WorldatWork).
@@ -24,7 +24,7 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 - **Every reportee sits at a lower level than their manager.** A "band" here means each of the 14 levels: A1 A2 A3 · B1 B2 B3 B+ · C1 C2 C+ · D1 D2 · E1 E2. So a B1 can report to a B2 or a B3, but never to another B1.
 - **Everyone reports to their original manager.** No reporting line is changed.
 - **The deepest line fits.** It is CARBON: CEO (E2) → Dixit Jasani (E1) → Anuradha RK (D2) → Suman Adhikary (D1) → K Ashok Kumar (C2) → Vijay Parulekar (C1) → Janardan Bale (B2) → Tejas Kat (B1) → Dhanraj Patil (A3).
-- **Placement uses the fewest moves.** 48 reportees were at or above their manager's level in the evidence placement. The model moves the fewest people needed, mostly by one level, and moves up and down count the same. People who move down keep their pay and title for one cycle.
+- **Placement uses the fewest moves.** To keep every reportee below their manager, the model moves as few people as it can, mostly by one level. Moves up and down count the same. **23 people move down and 14 move up.** People who move down keep their pay and title for one cycle.
 - **Result:** no structure exceptions.
 - **The rule also works live.** If a leader's input moves a manager down, their reportees are held one level below, and the "Level rule · live" column says why. The effect carries down the line.
 
@@ -61,6 +61,15 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
   - The names are now WT_KEY, WT_MID, LIST_WT, RATE_KEY, RATE_MOVE and LIST_RATE.
   - Links between sheets are now written as internal links, not as web addresses starting with "#".
   - A new check, `build_v2/xlsx_check.py`, scans the XML of both files for every known repair trigger.
+
+### Final review fixes
+- **No function's ladder runs to CEO.** A function's role now tops out at E1, the CXO of the function. E2 is the one enterprise CEO role. Titles such as "Chief Executive Officer – Administration & Facilities" are gone.
+- **Title changes start from the title the person holds today.** If their current designation is already the standard title, no change is shown.
+- **Consultants are labelled as consultants.** They sit outside the ladder, and their placement note now says so.
+- **Span wording is fixed.**
+  - A3 shows "No direct reports · guides 1–3 juniors informally" instead of "None · …".
+  - Counts read "1 direct report", not "1 direct reports".
+- **The engine column is renamed** "Level before the level rule".
 
 ### Hierarchy audit
 - **Every reporting line follows the level rule.** Each reportee sits below their manager, both at the IRIS level and at the level in force.

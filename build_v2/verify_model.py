@@ -93,11 +93,13 @@ def main():
     lanes_at = collections.defaultdict(set)
     for r in lrows:
         lanes_at[r[lh["Role ID"]]].add((r[lh["Level"]], r[lh["Lane"]]))
-    want_rows = {(lv, ln) for lv in V.LEVELS_PC for ln in (("IC", "Manager") if V.band(lv) in ("B", "C") else ("All",))
-                 if not (ln == "All" and V.VAL[lv] > V.VAL["D1"] and False)}
+    want_rows = {(lv, ln) for lv in V.LEVELS_PC if V.VAL[lv] <= V.VAL["E1"]
+                 for ln in (("IC", "Manager") if V.band(lv) in ("B", "C") else ("All",))}
+    over_e1 = [r[lh["Role ID"]] for r in lrows if r[lh["Level"]] == "E2" and r[lh["Job family"]] != V.ENT_FAMILY]
     short_ = [r[lh["Role ID"]] for r in gen if not want_rows <= lanes_at[r[lh["Role ID"]]]]
-    check("A role is a sub-family: every role runs A1 to E2, with IC and Manager lanes in Bands B and C — vacant levels and lanes included",
-          not short_ and len(role_rows_l) == len({r[lh["Role · sub-family"]] + r[lh["Job family"]] for r in role_rows_l}),
+    check("A role is a sub-family: every function's role runs A1 to E1 (E2 is the one enterprise CEO role), with IC and Manager "
+          "lanes in Bands B and C — vacant levels and lanes included",
+          not short_ and not over_e1 and len(role_rows_l) == len({r[lh["Role · sub-family"]] + r[lh["Job family"]] for r in role_rows_l}),
           f"{len(role_rows_l)} roles · {sum(1 for r in lrows if r[lh['People in IRIS']] == 'Vacant')} vacant rows · {short_[:3]}")
     check("Roles nobody holds yet have a ladder too", sum(1 for r in role_rows_l if r[lh["People in IRIS"]] == "Vacant") >= 5,
           str(sum(1 for r in role_rows_l if r[lh["People in IRIS"]] == "Vacant")))
@@ -263,9 +265,10 @@ def glitches():
           f"links {bad_links[:2]} · long formulas {long_f} · tall rows {tall[:2]} · junk {junk} · blank headers {blank_hdr[:2]} · "
           f"validations {bad_dv[:2]} · names {dn_bad[:2]}")
     wb.close()
-    xml = XC.scan(OUTFILE)
+    xml = XC.scan(OUTFILE) + (XC.schema_scan(OUTFILE, os.environ["JA_XSD"]) if os.environ.get("JA_XSD") else [])
     check("Excel opens the file without a repair: defined names valid, every link internal or a valid URL, strings, styles, "
-          "merges, columns, validations and numbers within Excel's rules (XML-level scan)", not xml, f"{len(xml)} · {xml[:3]}")
+          "merges, columns, validations and numbers within Excel's rules (XML-level scan"
+          + ("; every part valid against the ECMA-376 schema)" if os.environ.get("JA_XSD") else ")"), not xml, f"{len(xml)} · {xml[:3]}")
 
 
 def ladder_of(lv):

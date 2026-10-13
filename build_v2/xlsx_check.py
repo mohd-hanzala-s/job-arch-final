@@ -1,5 +1,6 @@
 """Excel-validity scan of a written .xlsx at the XML level: the things that make Excel say "We found a problem with some
 content" even when openpyxl and LibreOffice open the file happily."""
+import os
 import re
 import sys
 import zipfile
@@ -63,6 +64,25 @@ def scan(path):
     out = []
     z = zipfile.ZipFile(path)
     parts = set(z.namelist())
+    ct = ET.fromstring(z.read("[Content_Types].xml"))
+    for o in ct:
+        if o.get("PartName") and o.get("PartName").lstrip("/") not in parts:
+            out.append(f"content type for a missing part: {o.get('PartName')}")
+    for rp in [n for n in parts if n.endswith(".rels")]:
+        base = rp.replace("_rels/", "").rsplit(".rels", 1)[0].rsplit("/", 1)[0] if "/" in rp.replace("_rels/", "") else ""
+        for r in ET.fromstring(z.read(rp)):
+            if r.get("TargetMode") == "External":
+                continue
+            t = r.get("Target", "")
+            full = t.lstrip("/") if t.startswith("/") else (base + "/" + t if base else t)
+            parts_n = []
+            for seg in full.split("/"):
+                if seg == "..":
+                    parts_n and parts_n.pop()
+                elif seg not in ("", "."):
+                    parts_n.append(seg)
+            if "/".join(parts_n) not in parts:
+                out.append(f"{rp}: relationship to a missing part {t}")
     wbx = ET.fromstring(z.read("xl/workbook.xml"))
     rels = {r.get("Id"): r.get("Target") for r in ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))}
     sheets = []
@@ -213,10 +233,24 @@ def scan(path):
     return out
 
 
+def schema_scan(path, xsd_dir):
+    """Validate the workbook, styles and every sheet against the ECMA-376 SpreadsheetML schemas (sml-sheet.xsd and the
+    files it includes, as shipped in Apache POI's ooxml-schemas jar under schemaorg_apache_xmlbeans/src)."""
+    from lxml import etree
+    schema = etree.XMLSchema(etree.parse(os.path.join(xsd_dir, "sml-sheet.xsd")))
+    out = []
+    z = zipfile.ZipFile(path)
+    for n in z.namelist():
+        if re.match(r"xl/(workbook|styles|worksheets/sheet\d+)\.xml$", n):
+            if not schema.validate(etree.fromstring(z.read(n), etree.XMLParser(huge_tree=True))):
+                out += [f"{n} line {e.line}: {e.message[:200]}" for e in list(schema.error_log)[:5]]
+    return out
+
+
 if __name__ == "__main__":
     bad = 0
     for p in sys.argv[1:]:
-        res = scan(p)
+        res = scan(p) + (schema_scan(p, os.environ["JA_XSD"]) if os.environ.get("JA_XSD") else [])
         print(p, "→", "clean" if not res else f"{len(res)} problems")
         for r in res[:40]:
             print("  ", r)

@@ -131,7 +131,7 @@ def main(srcdir):
         if mname.startswith("—"):
             status = "Top of the organisation"
         elif not mname:
-            status = "No manager on record"
+            status = "No manager on record" if on(lv[n]) else "Consultant · no manager on record"
         elif m is None:
             status = "⚠ Manager not found"
         elif not on(lv[n]) or not on(lv[m]):
@@ -241,7 +241,8 @@ def main(srcdir):
             ("Reportee at or above their manager", stat["⚠ At or above the manager"]),
             ("Manager named but not found in the roster", stat["⚠ Manager not found"]),
             ("Top of the organisation · no manager above", stat["Top of the organisation"]),
-            ("No manager on record in the HRIS", stat["No manager on record"]),
+            ("Employee with no manager on record in the HRIS", stat["No manager on record"]),
+            ("Consultant with no manager on record · no Emp ID, outside the ladder", stat["Consultant · no manager on record"]),
             ("Consultant lines · outside the ladder, not levelled", stat["Consultant · outside the ladder"]),
             ("People reporting to themselves or in a loop", loops),
             ("Deepest reporting line · people", max(int(J.text(r[h["Layer from the CEO"]]) or 0) for r in d) + 1),
@@ -254,7 +255,7 @@ def main(srcdir):
         x = cell(ws, k, 1, a, "F2F2F2", True)
         x.font = Y.font(10, True)
         y = cell(ws, k, 2, b, "FFFFFF")
-        if a.startswith(("Reportee at or above", "Manager named")) and b:
+        if a.startswith(("Reportee at or above", "Manager named", "Employee with no manager")) and b:
             y.fill, y.font = Y.F_RED, Y.T_RED
         ws.merge_cells(start_row=k, start_column=2, end_row=k, end_column=6)
         ws.row_dimensions[k].height = 22
