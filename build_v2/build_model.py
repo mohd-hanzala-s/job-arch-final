@@ -1213,7 +1213,7 @@ def main(srcdir, simple=False):
         vals["Manager check · live"] = (
             f'=IFERROR(IF(OR(${mg}{r}="",{mf}=""),"—",IF(OR(LEFT({INF}{r},1)="X",LEFT({mf},1)="X"),"—",'
             f'IF(AND({cp}{r}="",{mf}="A1"),"⚠ No level left below an A1 manager — a structure decision",'
-            f'IF(INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))>=INDEX(B_VAL,MATCH({mf},B_LVL,0)),"⚠ At or above the manager's level","OK")))),"—")')
+            f'IF(INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))>=INDEX(B_VAL,MATCH({mf},B_LVL,0)),"⚠ At or above their manager","OK")))),"—")')
         xs = put_row(ws, r, cols, vals)
         for h, x in xs.items():
             if h.startswith(("Weightage", "Rating")):
