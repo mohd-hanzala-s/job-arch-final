@@ -356,10 +356,24 @@ def descriptors(R, fam, lv, cats, cj, work):
     return out
 
 
+LEAD_LEVELS = ["D1", "D2", "E1"]
+LEAD_TITLE = {"D1": "Associate Vice President", "D2": "Senior Vice President", "E1": "CXO"}
+
+
+def is_lead_role(fam, sub):
+    """A function's leadership role (HR Leadership, Sales Leadership …): it runs D1 to E1, never from A1."""
+    return fam not in (V.ENT_FAMILY, V.HEAD_FAMILY) and J.text(sub).lower().endswith("leadership")
+
+
+def lead_fn(sub):
+    """The function a leadership role leads: 'HR Leadership' → 'HR'."""
+    return re.sub(r"\s*Leadership$", "", J.text(sub)).strip() or J.text(sub)
+
+
 def role_levels(fam, sub, tg, held):
     """Every level a role can be held at, top down — held or vacant. IC roles stop at D1 (the IC track ends there);
-    Manager roles stop at E1 (CXO of the function); Business Heads run C1 to D2; the two Band E roles are one level each;
-    Consultants stay outside the ladder."""
+    Manager roles stop at E1 (CXO of the function); a function's leadership role runs D1 to E1, plus any level held in it today;
+    Business Heads run C1 to D2; the two Band E roles are one level each; Consultants stay outside the ladder."""
     held = {x for x in held if V.band(x) not in ("X", "")}
     if tg == "Consultant":
         return []
@@ -367,6 +381,8 @@ def role_levels(fam, sub, tg, held):
         base = [lv for lv, s_ in V.ENT_SUB.items() if s_ == sub]
     elif fam == V.HEAD_FAMILY:
         base = ["C1", "C2", "C+", "D1", "D2"]
+    elif is_lead_role(fam, sub):
+        base = list(LEAD_LEVELS)
     elif tg == "IC":
         base = [x for x in V.LEVELS_PC if V.VAL[x] <= V.VAL["D1"]]
     else:   # a function's ladder tops out at E1 (CXO of the function); E2 is the one enterprise CEO role
@@ -501,6 +517,8 @@ def main(srcdir, simple=False):
         if not fam or not sub or fam in ("Unassigned", V.HEAD_FAMILY, V.ENT_FAMILY) or "not recorded" in sub.lower():
             continue
         for tg in ("IC", "Manager"):
+            if tg == "IC" and is_lead_role(fam, sub):
+                continue   # a leadership role is a management role
             if (fam, sub, tg) not in roles:
                 vacant.append((fam, sub, tg))
     for n, k in enumerate(vacant, len(role_keys) + 1):
@@ -535,6 +553,8 @@ def main(srcdir, simple=False):
                 t_ = V.LEVEL_TITLE[lv][1]
             elif k[0] == V.HEAD_FAMILY:
                 t_ = f"{LEAD_HEAD.get(lv, V.LEVEL_TITLE[lv][1])} – {k[1]}"
+            elif is_lead_role(k[0], k[1]) and lv in LEAD_TITLE:
+                t_ = f"{LEAD_TITLE[lv]} – {lead_fn(k[1])}"
             else:
                 base = V.LEVEL_TITLE[lv][1 if mgr else 0]
                 t_ = f"{base if base not in ('—', '') else V.LEVEL_TITLE[lv][1]} – {k[1]}"
@@ -1577,7 +1597,8 @@ def main(srcdir, simple=False):
         ("2 · We built the ladder", "There was no level framework. From the answers and the market we built one ladder of 12 levels in five "
                                     "bands, plus two Player-Coach steps. Each level has its own experience range, scope and span, so the "
                                     "levels do not overlap · sheet 2. Then a ladder for every role — a role is a sub-family — from A1 "
-                                    "Intern up to E1, the head of the function (E2 is the one enterprise CEO role), with IC and Manager lanes in Bands B and C, including roles and levels nobody holds "
+                                    "Intern up to E1, the head of the function (E2 is the one enterprise CEO role); a function's leadership role runs D1 to E1; "
+                                    "with IC and Manager lanes in Bands B and C, including roles and levels nobody holds "
                                     "yet, each with its weightage and the reason for it · sheet 3."),
         ("3 · We placed everyone", "Each person got a job family, a sub-family, a role and a level from the evidence. Then we moved the fewest "
                                    f"people needed so that every reportee sits at a lower level than their manager: {moved_dn} down, pay and "

@@ -16,6 +16,7 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 ### The framework is role-based
 - **A role is a sub-family**, such as "Front-End / UI Development". There are 61 roles on the ladder: 56 are held today and 5 are not yet held. Consultants sit outside it.
 - Every role runs on one shared ladder from A1 Intern up to E1, the head of the function. E2 is the one enterprise CEO role.
+- **A function's leadership role runs D1 to E1:** Associate Vice President, Senior Vice President, then CXO. Examples are HR Leadership and Sales Leadership. Where someone holds such a role below D1 today, that level stays on the ladder and nobody moves.
   - In Bands B and C a role has two lanes, IC and Manager. This is the dual career path, and the market weighs the lanes differently.
   - Band A, the Player-Coach steps (B+, C+) and Bands D and E have one shared path.
 - **Why:** job architecture keeps families and sub-families separate from levels, and the levels mean the same in every family (S78 Payscale, S80 Mercer). Parallel IC and manager tracks are the standard dual ladder (S79 WorldatWork).

@@ -96,7 +96,17 @@ def main():
     want_rows = {(lv, ln) for lv in V.LEVELS_PC if V.VAL[lv] <= V.VAL["E1"]
                  for ln in (("IC", "Manager") if V.band(lv) in ("B", "C") else ("All",))}
     over_e1 = [r[lh["Role ID"]] for r in lrows if r[lh["Level"]] == "E2" and r[lh["Job family"]] != V.ENT_FAMILY]
+    lead = [r for r in gen if BM.is_lead_role(r[lh["Job family"]], r[lh["Role · sub-family"]])]
+    gen = [r for r in gen if r not in lead]
     short_ = [r[lh["Role ID"]] for r in gen if not want_rows <= lanes_at[r[lh["Role ID"]]]]
+    held_at = collections.defaultdict(set)
+    for r in lrows:
+        if r[lh["People in IRIS"]] not in ("Vacant", None, "", 0):
+            held_at[r[lh["Role ID"]]].add(r[lh["Level"]])
+    bad_lead = [r[lh["Role ID"]] for r in lead
+                if {lv for lv, _ in lanes_at[r[lh["Role ID"]]]} != set(BM.LEAD_LEVELS) | held_at[r[lh["Role ID"]]]]
+    check("A function's leadership role runs D1 to E1 — below D1 only where someone holds it today", lead and not bad_lead,
+          f"{len(lead)} leadership roles · {bad_lead[:3]}")
     check("A role is a sub-family: every function's role runs A1 to E1 (E2 is the one enterprise CEO role), with IC and Manager "
           "lanes in Bands B and C — vacant levels and lanes included",
           not short_ and not over_e1 and len(role_rows_l) == len({r[lh["Role · sub-family"]] + r[lh["Job family"]] for r in role_rows_l}),
