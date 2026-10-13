@@ -29,6 +29,7 @@ import re
 import sys
 
 import openpyxl
+from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.styles import Alignment, PatternFill
 from openpyxl.utils import get_column_letter as L
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -544,9 +545,9 @@ def main(srcdir, simple=False):
                                                          f"this level; it counts {mid}. A number typed instead is used as it is."), 1):
             cell(ws, r, j, v, "FFF2CC" if j == 5 else "FFFFFF", j == 1)
         r += 1
-    name_range(wb, "W5_KEY", S_BE, f"$A${top}:$A${r - 1}")
-    name_range(wb, "W5_MID", S_BE, f"$E${top}:$E${r - 1}")
-    name_range(wb, "LIST_W5", S_BE, f"$A${top}:$A${r - 1}")
+    name_range(wb, "WT_KEY", S_BE, f"$A${top}:$A${r - 1}")
+    name_range(wb, "WT_MID", S_BE, f"$E${top}:$E${r - 1}")
+    name_range(wb, "LIST_WT", S_BE, f"$A${top}:$A${r - 1}")
     r += 1
     for j, h in enumerate(["Rating step", "Means", "Explained", "Move · levels"], 1):
         Y.header(ws.cell(r, j, h), Y.NAVY)
@@ -556,9 +557,9 @@ def main(srcdir, simple=False):
         for j, v in enumerate((code, nm, expl, mv), 1):
             cell(ws, r, j, v, "FFF2CC" if j == 4 else "FFFFFF", j == 1)
         r += 1
-    name_range(wb, "R5_KEY", S_BE, f"$A${top}:$A${r - 1}")
-    name_range(wb, "R5_MOVE", S_BE, f"$D${top}:$D${r - 1}")
-    name_range(wb, "LIST_R5", S_BE, f"$A${top}:$A${r - 1}")
+    name_range(wb, "RATE_KEY", S_BE, f"$A${top}:$A${r - 1}")
+    name_range(wb, "RATE_MOVE", S_BE, f"$D${top}:$D${r - 1}")
+    name_range(wb, "LIST_RATE", S_BE, f"$A${top}:$A${r - 1}")
     r += 1
     for j, h in enumerate(["Level", "Value", "Band", "Band rank", "Standard ladder", "Player-Coach ladder",
                            "Highest level a reportee may hold · one below · standard ladder", "· Player-Coach ladder"], 1):
@@ -659,7 +660,7 @@ def main(srcdir, simple=False):
     iris_cols = [col[f"IRIS · {n}"] for _, n in PARAMS]
     imp_cols = [col[f"Importance · {k}"] for k in PKEYS]
     blt_cols = [col[f"As built · {k}"] for k in PKEYS]
-    dv_rl = DataValidation(type="list", formula1="LIST_W5", allow_blank=True, errorStyle="warning", showErrorMessage=True,
+    dv_rl = DataValidation(type="list", formula1="LIST_WT", allow_blank=True, errorStyle="warning", showErrorMessage=True,
                            errorTitle="Weightage", error="Use VL, L, M, H or VH — or type a number from 0 to 100.")
     ws.add_data_validation(dv_rl)
     at_row = collections.Counter()
@@ -725,7 +726,7 @@ def main(srcdir, simple=False):
                 hv = f'INDEX(RL_L_{pk},MATCH("{hk}",RL_KEY,0))'
                 uc = col[f"In use · {pn}"]
                 vals[f"In use · {pn}"] = f'=IF({lc}{r}<>"",{lc}{r},IFERROR(IF({hv}<>"",{hv},{ic}{r}),{ic}{r}))'
-                vals[f"Importance · {pk}"] = f'=IF(ISNUMBER({uc}{r}),MAX(0,MIN(100,{uc}{r})),IFERROR(INDEX(W5_MID,MATCH({uc}{r},W5_KEY,0)),0))'
+                vals[f"Importance · {pk}"] = f'=IF(ISNUMBER({uc}{r}),MAX(0,MIN(100,{uc}{r})),IFERROR(INDEX(WT_MID,MATCH({uc}{r},WT_KEY,0)),0))'
                 vals[f"As built · {pk}"] = iris[pk]
                 ip = col[f"Importance · {pk}"]
                 vals[f"Share · {pn}"] = f'=IF(SUM(${imp_cols[0]}{r}:${imp_cols[-1]}{r})=0,"",{ip}{r}/SUM(${imp_cols[0]}{r}:${imp_cols[-1]}{r}))'
@@ -1171,7 +1172,7 @@ def main(srcdir, simple=False):
                                                 f'{ix("RL_E_" + pk, lk)}),""))')
             vals[f"Rating IRIS · {pn}"] = iris_r.get(pk, "")
             ri, rl = col[f"Rating IRIS · {pn}"], col[f"Rating Leader · {pn}"]
-            vals[f"imp {pk}"] = f'=IF(ISNUMBER({wu}{r}),MAX(0,MIN(100,{wu}{r})),IFERROR(INDEX(W5_MID,MATCH({wu}{r},W5_KEY,0)),0))'
+            vals[f"imp {pk}"] = f'=IF(ISNUMBER({wu}{r}),MAX(0,MIN(100,{wu}{r})),IFERROR(INDEX(WT_MID,MATCH({wu}{r},WT_KEY,0)),0))'
             vals[f"mv {pk}"] = f'=IFERROR(IF({rl}{r}<>"",({rl}{r}-3)/2,IF({ri}{r}<>"",({ri}{r}-3)/2,0)),0)'
         im0, im1 = col["imp " + PKEYS[0]], col["imp " + PKEYS[-1]]
         mv0, mv1 = col["mv " + PKEYS[0]], col["mv " + PKEYS[-1]]
@@ -1242,10 +1243,10 @@ def main(srcdir, simple=False):
                 x.hyperlink = f"#{Q(S_PC)}!A1"
                 x.font = Y.font(9, True, "0563C1", underline="single")
         ws.row_dimensions[r].height = 70
-    dv_r = DataValidation(type="list", formula1="LIST_R5", allow_blank=True, showErrorMessage=True, errorTitle="Rating",
+    dv_r = DataValidation(type="list", formula1="LIST_RATE", allow_blank=True, showErrorMessage=True, errorTitle="Rating",
                           error="Rate 1 to 5 against the level: 1 Well below · 2 Below · 3 Meets · 4 Above · 5 Well above.")
     dv_o = DataValidation(type="list", formula1="LIST_LEVELS", allow_blank=True)
-    dv_w = DataValidation(type="list", formula1="LIST_W5", allow_blank=True, errorStyle="warning", showErrorMessage=True,
+    dv_w = DataValidation(type="list", formula1="LIST_WT", allow_blank=True, errorStyle="warning", showErrorMessage=True,
                           errorTitle="Weightage", error="Use VL, L, M, H or VH — or type a number from 0 to 100.")
     ws.add_data_validation(dv_r)
     ws.add_data_validation(dv_o)
@@ -1601,6 +1602,12 @@ def main(srcdir, simple=False):
                 for x in row_:
                     if isinstance(x.value, str) and not x.value.startswith("=") and re.search(r"[Ss]heet \d", x.value):
                         x.value = re.sub(r"([Ss]heet) (\d)\b", sub_, x.value)
+    for ws_ in wb.worksheets:   # links inside the workbook are written as internal locations, not as external "#…" targets
+        for row_ in ws_.iter_rows():
+            for x in row_:
+                h = x.hyperlink
+                if h is not None and str(h.target or "").startswith("#"):
+                    x.hyperlink = Hyperlink(ref=x.coordinate, location=str(h.target)[1:], display=h.display, tooltip=h.tooltip)
     wb.active = 0
     wb.calculation.fullCalcOnLoad = True
     wb.save(OUTFILE)

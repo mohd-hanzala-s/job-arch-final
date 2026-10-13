@@ -11,6 +11,7 @@ import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ja_common as J  # noqa: E402
+import xlsx_check as XC  # noqa: E402
 import ja_raw as RW  # noqa: E402
 import ja_scale as SC  # noqa: E402
 import ja_v114 as V  # noqa: E402
@@ -235,8 +236,8 @@ def glitches():
                         long_f += 1
                     if v.strip() in ("None", "nan", "NaN", "#N/A") and not v.startswith("="):
                         junk += 1
-                if x.hyperlink is not None and x.hyperlink.location is None and str(x.hyperlink.target or "").startswith("#"):
-                    tgt = str(x.hyperlink.target)[1:].split("!")[0].strip("'")
+                if x.hyperlink is not None and (x.hyperlink.location or str(x.hyperlink.target or "").startswith("#")):
+                    tgt = str(x.hyperlink.location or str(x.hyperlink.target)[1:]).split("!")[0].strip("'")
                     if tgt not in names:
                         bad_links.append((ws.title, x.coordinate, tgt))
         for rn, rd in ws.row_dimensions.items():
@@ -262,6 +263,9 @@ def glitches():
           f"links {bad_links[:2]} · long formulas {long_f} · tall rows {tall[:2]} · junk {junk} · blank headers {blank_hdr[:2]} · "
           f"validations {bad_dv[:2]} · names {dn_bad[:2]}")
     wb.close()
+    xml = XC.scan(OUTFILE)
+    check("Excel opens the file without a repair: defined names valid, every link internal or a valid URL, strings, styles, "
+          "merges, columns, validations and numbers within Excel's rules (XML-level scan)", not xml, f"{len(xml)} · {xml[:3]}")
 
 
 def ladder_of(lv):
