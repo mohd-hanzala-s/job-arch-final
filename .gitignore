@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 *.tmp
 IRIS_JA_Model_v2.2/*.xlsx
+dist/

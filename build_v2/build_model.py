@@ -1117,7 +1117,7 @@ def main(srcdir, simple=False):
                 chain_.append(by_i[x_]["name"])
                 x_ = org.mgr[x_]
             sflag = (f"Structure exception: shares Band {V.band(new[m])} with manager {by_i[m]['name']} ({new[m]}). The reporting line "
-                     f"{' → '.join(reversed(chain_))} → … runs {depth_below(i) + len(chain_) - 1} layers deep, more than the seven bands "
+                     f"{' → '.join(reversed(chain_))} → … is {depth_below(i) + len(chain_)} people deep, more than the seven bands "
                      "A · B · B+ · C · C+ · D · E can separate. Reporting kept as it is; held one level below the manager.")
         else:
             sflag = ""
