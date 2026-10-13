@@ -542,7 +542,8 @@ def main(srcdir, simple=False):
             pick_ = next((t for t, _ in at[lv].most_common() if t not in used), None)
             if pick_ is None:
                 base = V.LEVEL_TITLE.get(lv, (lv, lv))[1 if mgr else 0]
-                pick_ = f"{base} – {k[1]}" if base not in ("—", "") else k[1]
+                fn_ = lead_fn(k[1]) if is_lead_role(k[0], k[1]) else k[1]
+                pick_ = f"{base} – {fn_}" if base not in ("—", "") else fn_
             rr["std_head"][lv] = pick_
             used.add(pick_)
         rr["std"] = dict(rr["std_head"])

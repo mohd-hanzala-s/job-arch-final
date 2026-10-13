@@ -9,7 +9,7 @@ Two workbooks, built by one pipeline from the same data:
 | `IRIS_JA_QA_Report_v2.2.md` | CHRO and HR | The QA result, the figures that matter and the points to raise. It names people, so it travels with the workbooks only. |
 | `IRIS_JA_Hierarchy_Audit_v2.2.xlsx` | HR | Every reporting line checked against the level rule, and every person whose manager in another source file differs from the Employee Master. |
 
-Both files have no formula errors and pass every check in `build_v2/verify_model.py`: 49 checks on the Master and 45 on the Simplified. One check scans each file's XML for anything that makes Excel offer to repair it. All three files are also valid against the ECMA-376 SpreadsheetML schema.
+Both files have no formula errors and pass every check in `build_v2/verify_model.py`: 50 checks on the Master and 46 on the Simplified. One check scans each file's XML for anything that makes Excel offer to repair it. All three files are also valid against the ECMA-376 SpreadsheetML schema.
 
 ## What changed in v2.2
 
