@@ -17,9 +17,8 @@ The story the workbook follows, sheet by sheet:
 Scales (ja_scale.py): weightage in five 20-point importance steps VL–VH counted at 10·30·50·70·90, or a number 0–100;
 ratings 1–5 in half-level steps. Shift = live weighted rating − IRIS's anchor; ±½ level moves one level, at most two.
 
-Placement: the v1.13 evidence level, then the fewest moves that keep every reportee in a lower band than
-their manager · moving up costs twice moving down; Band E with Band E is the agreed exception; where a
-reporting chain is deeper than the bands, the pair is flagged for a structure decision, never forced.
+Placement: the v1.13 evidence level, then the fewest moves that keep every reportee at a lower level than their manager
+(B1 under B2 is fine; B2 under B2 is not), with every reporting line kept exactly as it is.
 
 Usage: JA_V1=<folder with the six v1 IRIS_<Business>_Talent_Mapping.xlsx and the Employee Masters> \
        python3 build_model.py <folder with the five talent-mapping source files>
@@ -87,7 +86,7 @@ FACT_COLS = {"C": ("Complexity rating", "Complexity & Expertise — justificatio
 
 
 # ================================================================ placement: fewest moves, no shared band
-def place(org, pen=6.0, up_cost=2.0, span=2):
+def place(org, up_cost=1.01, span=2):
     sys.setrecursionlimit(10000)
 
     def options(i):
@@ -99,23 +98,22 @@ def place(org, pen=6.0, up_cost=2.0, span=2):
         out = {}
         for x in V.LEVELS_PC:
             nb = V.band(x)
-            if nb in ("B+", "C+") and nb != b and not org.kids[i]:
-                continue   # a Player-Coach step is open only to someone who leads people while still delivering
+            if nb in ("B+", "C+") and nb != b:
+                continue   # a Player-Coach step is set by the role, never used just to fit a reporting line
             if (nb == "E") != (b == "E"):
                 continue
             if abs(BANDS.index(nb) - k) > span:
                 continue
             d = V.VAL[x] - V.VAL[lv]
-            out[x] = (d * up_cost if d > 0 else -d) + (0.25 if nb in ("B+", "C+") and nb != b else 0.0)
+            out[x] = d * up_cost if d > 0 else -d
         return out
 
     def rel(cl, pl):
+        """The hierarchy rule: a reportee sits at a lower level than their manager — B1 under B2 is fine, B2 under B2 is not."""
         cb, pb = V.band(cl), V.band(pl)
-        if "X" in (cb, pb) or not cb or not pb or (cb == "E" and pb == "E"):
+        if "X" in (cb, pb) or not cb or not pb:
             return 0.0
-        if V.VAL[cl] >= V.VAL[pl]:
-            return None
-        return pen if cb == pb else 0.0
+        return None if V.VAL[cl] >= V.VAL[pl] else 0.0
 
     memo = {}
 
@@ -563,21 +561,11 @@ def main(srcdir, simple=False):
     name_range(wb, "LIST_R5", S_BE, f"$A${top}:$A${r - 1}")
     r += 1
     for j, h in enumerate(["Level", "Value", "Band", "Band rank", "Standard ladder", "Player-Coach ladder",
-                           "Highest level a reportee may hold · standard ladder", "· Player-Coach ladder",
-                           "Structure exception · one level below · standard", "· Player-Coach"], 1):
+                           "Highest level a reportee may hold · one below · standard ladder", "· Player-Coach ladder"], 1):
         Y.header(ws.cell(r, j, h), Y.NAVY)
     r += 1
     top = r
 
-    def cap_for(m, ladder):
-        """The band rule: a reportee sits in a lower band than the manager; under the CEO, a Chief Officer may sit in Band E."""
-        bm = V.band(m)
-        if bm not in BANDS:
-            return None
-        if m == "E2":
-            return "E1"
-        ok = [x for x in ladder if BANDS.index(V.band(x)) < BANDS.index(bm)]
-        return ok[-1] if ok else None
     def below_of(m, ladder):
         ok = [x for x in ladder if V.VAL[x] < V.VAL.get(m, 0)]
         return ok[-1] if ok and V.band(m) in BANDS else None
@@ -585,7 +573,7 @@ def main(srcdir, simple=False):
         b = V.band(lv)
         vals = (lv, V.VAL.get(lv, 0), b, BANDS.index(b) + 1 if b in BANDS else 0,
                 V.LEVELS_STD[k] if k < len(V.LEVELS_STD) else None, V.LEVELS_PC[k] if k < len(V.LEVELS_PC) else None,
-                cap_for(lv, V.LEVELS_STD), cap_for(lv, V.LEVELS_PC), below_of(lv, V.LEVELS_STD), below_of(lv, V.LEVELS_PC))
+                below_of(lv, V.LEVELS_STD), below_of(lv, V.LEVELS_PC))
         for j, v in enumerate(vals, 1):
             cell(ws, r, j, v, "FFFFFF", j == 1)
         r += 1
@@ -595,10 +583,8 @@ def main(srcdir, simple=False):
     name_range(wb, "LAD_STD", S_BE, f"$E${top}:$E${top + 11}")
     name_range(wb, "LAD_PC", S_BE, f"$F${top}:$F${top + 13}")
     name_range(wb, "LIST_LEVELS", S_BE, f"$A${top}:$A${r - 1}")
-    name_range(wb, "CAP_STD", S_BE, f"$G${top}:$G${r - 1}")
-    name_range(wb, "CAP_PC", S_BE, f"$H${top}:$H${r - 1}")
-    name_range(wb, "BELOW_STD", S_BE, f"$I${top}:$I${r - 1}")
-    name_range(wb, "BELOW_PC", S_BE, f"$J${top}:$J${r - 1}")
+    name_range(wb, "BELOW_STD", S_BE, f"$G${top}:$G${r - 1}")
+    name_range(wb, "BELOW_PC", S_BE, f"$H${top}:$H${r - 1}")
     r += 1
     Y.header(ws.cell(r, 1, "People · for the Person Card"), Y.NAVY)
     r += 1
@@ -1052,17 +1038,17 @@ def main(srcdir, simple=False):
         ("LEADER PROPOSAL — blank until you give an input", "C00000", [("Leader override · any level", 10), ("Score shift · levels", 9),
                                                                        ("Leader proposed level", 10),
                                                                        ("Leader proposed band", 20), ("Move vs IRIS", 12),
-                                                                       ("Level in force · after the band rule", 10),
-                                                                       ("Band in force", 20), ("Band rule · live", 30),
+                                                                       ("Level in force · after the level rule", 10),
+                                                                       ("Band in force", 20), ("Level rule · live", 30),
                                                                        ("Manager check · live", 24), ("Leader comment", 30)]),
         ("ENGINE", "595959", [(f"imp {k}", 5) for k in PKEYS] + [(f"mv {k}", 5) for k in PKEYS] +
          [("Inputs", 5), ("Net live", 6), ("Anchor · IRIS as built", 6), ("Ladder key", 12), ("Role key", 12),
-          ("Level before the band rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6), ("Structure exception", 6)]),
+          ("Level before the band rule", 6), ("Manager's level in force", 6), ("Highest level allowed", 6)]),
     ]
     cols = headers(ws, groups)
     col = {h: L(c_) for c_, h, _, _ in cols}
     last = 6 + len(order)
-    E, INF = col["Emp ID"], col["Level in force · after the band rule"]
+    E, INF = col["Emp ID"], col["Level in force · after the level rule"]
     raw_row = {i: 7 + n for n, i in enumerate(order)}
     tm_row = {}
     for n, i in enumerate(order):
@@ -1106,8 +1092,8 @@ def main(srcdir, simple=False):
         if lv == model:
             how = f"Placed at {lv} by the evidence: six ratings × market-derived weights and rules R1–R13 · no move needed for the reporting line"
         else:
-            how = (f"Evidence level {model} · moved {'down' if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else 'up'} to {lv} so that no reportee shares "
-                   f"a band with their manager, with the fewest moves across IRIS" + (" · pay and title protected for one cycle" if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else ""))
+            how = (f"Evidence level {model} · moved {'down' if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else 'up'} to {lv} so that every reportee "
+                   f"sits at a lower level than their manager, with the fewest moves across IRIS and every reporting line kept" + (" · pay and title protected for one cycle" if V.VAL.get(lv, 0) < V.VAL.get(model, 0) else ""))
         if p["i"] in changed:
             how += f" · {'Band E · Enterprise Leadership' if changed[p['i']][2] == V.ENT_FAMILY else 'department head · Executive Leadership · Business Head'}"
         m = org.mgr[i]
@@ -1116,9 +1102,8 @@ def main(srcdir, simple=False):
             while x_ is not None:
                 chain_.append(by_i[x_]["name"])
                 x_ = org.mgr[x_]
-            sflag = (f"Structure exception: shares Band {V.band(new[m])} with manager {by_i[m]['name']} ({new[m]}). The reporting line "
-                     f"{' → '.join(reversed(chain_))} → … is {depth_below(i) + len(chain_)} people deep, more than the seven bands "
-                     "A · B · B+ · C · C+ · D · E can separate. Reporting kept as it is; held one level below the manager.")
+            sflag = (f"Structure decision: no lower level is left for this reportee of {by_i[m]['name']} ({new[m]}) in the line "
+                     f"{' → '.join(reversed(chain_))} → … ({depth_below(i) + len(chain_)} people deep).")
         else:
             sflag = ""
         des = J.text(tm[H["Final designation"]])
@@ -1215,27 +1200,20 @@ def main(srcdir, simple=False):
         rw, mi, cp = col["Level before the band rule"], col["Manager's level in force"], col["Highest level allowed"]
         vals["Level before the band rule"] = f'=IF({lp}{r}<>"",{lp}{r},{iris_c}{r})'
         vals["Manager's level in force"] = f'=IF(${mg}{r}="","",IFERROR(INDEX(${INF}$7:${INF}${last},MATCH(${mg}{r},${E}$7:${E}${last},0)),""))'
-        ex = col["Structure exception"]
-        vals["Structure exception"] = 1 if i in flag else ""
         vals["Highest level allowed"] = (f'=IF(OR({mi}{r}="",LEFT({mi}{r},1)="X",LEFT({rw}{r},1)="X"),"",'
-                                         f'IFERROR(INDEX(IF({ex}{r}=1,IF(OR({rw}{r}="B+",{rw}{r}="C+"),BELOW_PC,BELOW_STD),'
-                                         f'IF(OR({rw}{r}="B+",{rw}{r}="C+"),CAP_PC,CAP_STD)),MATCH({mi}{r},B_LVL,0)),""))')
-        vals["Level in force · after the band rule"] = (f'=IF({cp}{r}="",{rw}{r},IF(INDEX(B_VAL,MATCH({rw}{r},B_LVL,0))>'
+                                         f'IFERROR(INDEX(IF(OR({rw}{r}="B+",{rw}{r}="C+"),BELOW_PC,BELOW_STD),MATCH({mi}{r},B_LVL,0)),""))')
+        vals["Level in force · after the level rule"] = (f'=IF({cp}{r}="",{rw}{r},IF(INDEX(B_VAL,MATCH({rw}{r},B_LVL,0))>'
                                                         f'INDEX(B_VAL,MATCH({cp}{r},B_LVL,0)),{cp}{r},{rw}{r}))')
         vals["Band in force"] = (f'=IFERROR(CHOOSE(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0)),"Band A · Practitioner",'
                                  f'"Band B · Specialist / Manager","B+ · Player-Coach","Band C · Principal / Head","C+ · Player-Coach",'
                                  f'"Band D · Business leadership","Band E · Enterprise leadership"),"Band X · Consultant")')
-        vals["Band rule · live"] = (f'=IF({INF}{r}={rw}{r},"","Held at "&{INF}{r}&" — the manager is at "&{mi}{r}&'
-                                    '" and a reportee stays in a lower band")')
+        vals["Level rule · live"] = (f'=IF({INF}{r}={rw}{r},"","Held at "&{INF}{r}&" — the manager is at "&{mi}{r}&'
+                                    '" and a reportee stays at a lower level")')
         mf = f'{mi}{r}'
         vals["Manager check · live"] = (
             f'=IFERROR(IF(OR(${mg}{r}="",{mf}=""),"—",IF(OR(LEFT({INF}{r},1)="X",LEFT({mf},1)="X"),"—",'
-            f'IF(AND(LEFT({INF}{r},1)="E",LEFT({mf},1)="E"),"Exception · Band E",'
-            f'IF(AND({cp}{r}="",LEFT({mf},1)="A"),"⚠ No band left below an A-level manager — a structure decision",'
-            f'IF(AND({ex}{r}=1,INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))<INDEX(B_VAL,MATCH({mf},B_LVL,0))),'
-            '"Structure exception · chain deeper than the bands",'
-            f'IF(INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))>=INDEX(B_VAL,MATCH({mf},B_LVL,0)),"⚠ At or above the manager",'
-            f'IF(INDEX(B_RANK,MATCH({INF}{r},B_LVL,0))=INDEX(B_RANK,MATCH({mf},B_LVL,0)),"⚠ Same band as the manager","OK"))))))),"—")')
+            f'IF(AND({cp}{r}="",{mf}="A1"),"⚠ No level left below an A1 manager — a structure decision",'
+            f'IF(INDEX(B_VAL,MATCH({INF}{r},B_LVL,0))>=INDEX(B_VAL,MATCH({mf},B_LVL,0)),"⚠ At or above the manager's level","OK")))),"—")')
         xs = put_row(ws, r, cols, vals)
         for h, x in xs.items():
             if h.startswith(("Weightage", "Rating")):
@@ -1247,7 +1225,7 @@ def main(srcdir, simple=False):
                 x.number_format = "+0.00;-0.00;0.00"
                 x.alignment = Alignment(horizontal="center", vertical="top")
                 x.font = Y.font(10, True)
-            if h in ("IRIS proposed level", "Leader proposed level", "Level in force · after the band rule", "Market level · published weights"):
+            if h in ("IRIS proposed level", "Leader proposed level", "Level in force · after the level rule", "Market level · published weights"):
                 x.font = Y.font(11, True)
                 x.alignment = Alignment(horizontal="center", vertical="top")
                 b = Y.band_of(vals.get(h, ""))
@@ -1383,7 +1361,7 @@ def main(srcdir, simple=False):
                             "Title change", "How IRIS placed them", "Structure flag"]),
         ("MARKET", ["Market level · published weights", "Experience vs the level · market", "Span vs the norm", "Radford / Mercer · SFIA 9"]),
         ("LEADER PROPOSAL", ["Score shift · levels", "Leader proposed level", "Leader proposed band", "Move vs IRIS",
-                             "Level in force · after the band rule", "Band in force", "Band rule · live", "Manager check · live", "Leader comment"]),
+                             "Level in force · after the level rule", "Band in force", "Level rule · live", "Manager check · live", "Leader comment"]),
         ("WHAT THEY TOLD US", ["Survey · questions answered", SURVEY_COL, "KRAs from the manager", "Performance · rating · potential · 9-box",
                                "Evidence used for the ratings"]),
     ]
@@ -1539,11 +1517,9 @@ def main(srcdir, simple=False):
                                     "Intern to E2, with IC and Manager lanes in Bands B and C, including roles and levels nobody holds "
                                     "yet, each with its weightage and the reason for it · sheet 3."),
         ("3 · We placed everyone", "Each person got a job family, a sub-family, a role and a level from the evidence. Then we moved the fewest "
-                                   f"people needed so that no one shares a band with their manager: {moved_dn} down, pay and title protected, "
-                                   f"and {moved_up} up — including managers who still deliver taking the Player-Coach step B+ or C+ where "
-                                   "a reporting chain is deep. Everyone reports to their original manager. "
-                                   f"{len(flag)} pair{'s' if len(flag) != 1 else ''} in a reporting chain deeper than the seven bands "
-                                   "cannot be separated and is marked as a structure exception · sheet 7, 'Structure flag'."),
+                                   f"people needed so that every reportee sits at a lower level than their manager: {moved_dn} down, pay and "
+                                   f"title protected, and {moved_up} up; most by a single level. Everyone reports to their original manager — "
+                                   "no reporting line is changed."),
         ("4 · We checked the market", "Every parameter's weight is set against published job-evaluation methods — Korn Ferry Hay, Mercer "
                                       "IPE and five public plans — and shown in five steps, VL to VH, with the numbers behind it · sheet 6. "
                                       "Levels map to Radford / Mercer codes, SFIA and peer experience ranges; every role's journey, IRIS against the "
@@ -1575,12 +1551,11 @@ def main(srcdir, simple=False):
                                    "levels mean the same in every family (S78, S80). In Bands B and C a role has two lanes, IC and "
                                    "Manager, the dual career path (S79); the market weighs them differently, so each lane has its own "
                                    "weightage. Band A, the Player-Coach steps and Bands D and E have one path."),
-        ("No overlap in a team", "A reportee always sits in a lower band than their manager; only the CEO and the Chief Officers share "
-                                 "Band E. Where a reporting chain is deeper than the bands, the manager in the middle takes the "
-                                 "Player-Coach step B+ or C+ — the player/coach manager who still delivers (S75). Everyone keeps their original "
-                                 "manager, so a chain deeper than the seven bands keeps one shared band, marked as a structure exception "
-                                 "and held one level below the manager. The rule also works live: "
-                                 "if a leader moves a manager down, their reportees are held in the band below and flagged."),
+        ("No overlap in a team", "A reportee always sits at a lower level than their manager: a B1 can report to a B2 or a B3, never to "
+                                 "another B1. With 14 levels — A1 A2 A3 · B1 B2 B3 B+ · C1 C2 C+ · D1 D2 · E1 E2 — even the deepest "
+                                 "reporting line fits without changing who reports to whom. The rule also works live: if a leader moves a "
+                                 "manager down, their reportees are held one level below and the 'Level rule' column says why; the effect "
+                                 "carries down the line."),
         ("The seven parameters", "Complexity & Expertise · Autonomy & Decision · Accountability & Impact · Leadership & Strategy · "
                                  "Business Impact · Experience · Education."),
         ("Colours", "Yellow = yours to fill · blue = the IRIS base, which HR may edit · red = a structure decision or a warning · "

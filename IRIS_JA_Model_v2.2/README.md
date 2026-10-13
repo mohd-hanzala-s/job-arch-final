@@ -19,19 +19,13 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 - **Why:** job architecture keeps families and sub-families separate from levels, and the levels mean the same in every family (S78 Payscale, S80 Mercer). Parallel IC and manager tracks are the standard dual ladder (S79 WorldatWork).
 - **Weightage is set per role, level and lane** on sheet 3. A leader's entry on a role's ROLE row re-weights that role everywhere in IRIS, and an entry on a level row wins over it.
 
-### No overlap in a team
-- **Every reportee sits in a lower band than their manager.** The only exception, agreed earlier, is the CEO and the Chief Officers, who share Band E.
-- **Deep reporting chains** are resolved, not flagged. Where a chain is deeper than the bands, the manager in the middle takes the Player-Coach step B+ or C+. That is McKinsey's player/coach archetype (S75): a manager who still delivers.
+### No overlap in a team: the level rule
+- **Every reportee sits at a lower level than their manager.** A "band" here means each of the 14 levels: A1 A2 A3 · B1 B2 B3 B+ · C1 C2 C+ · D1 D2 · E1 E2. So a B1 can report to a B2 or a B3, but never to another B1.
 - **Everyone reports to their original manager.** No reporting line is changed.
-- **One structure exception remains.** One CARBON reporting line is nine people deep: CEO → Dixit Jasani → Anuradha RK → Suman Adhikary → five more layers. With the original lines kept, that is deeper than the seven bands (A · B · B+ · C · C+ · D · E) can separate. So one pair has to share a band, which can't be avoided without changing who reports to whom:
-  - Suman Adhikary (D1) and Anuradha RK (D2) share Band D.
-  - Suman is still one level below Anuradha.
-  - The pair is marked "Structure exception" in the Structure flag and Manager check columns.
-  - Changing that line, or Anuradha's role, would remove it. That is a decision for HR and the business.
-- **Result:** the moves needed and the exception are shown on How it works.
-- **The rule also works live.**
-  - If a leader's input moves a manager down, their reportees are held in the band below. "Band rule · live" explains why, and the effect cascades down the line.
-  - If there is no band left (under an A-level manager), the manager check shows a structure-decision warning.
+- **The deepest line fits.** It is CARBON: CEO (E2) → Dixit Jasani (E1) → Anuradha RK (D2) → Suman Adhikary (D1) → K Ashok Kumar (C1) → Vijay Parulekar (B3) → Janardan Bale (B2) → Tejas Kat (B1) → Dhanraj Patil (A3).
+- **Placement uses the fewest moves.** 48 reportees were at or above their manager's level in the evidence placement. The model moves the fewest people needed, mostly by one level, and moves up and down count the same. People who move down keep their pay and title for one cycle.
+- **Result:** no structure exceptions.
+- **The rule also works live.** If a leader's input moves a manager down, their reportees are held one level below, and the "Level rule · live" column says why. The effect carries down the line.
 
 ### Raw Data
 - **Added:** the All-Sources collation (`IRIS_Employee_Raw_Data_All_Sources.xlsx`). It brings in:

@@ -47,14 +47,16 @@ def main():
     check("Leader columns blank until a leader gives an input", all(r[h["Leader proposed level"]] in (None, "") for r in d))
     mc = collections.Counter(r[h["Manager check · live"]] for r in d)
     flagged = sum(1 for r in d if r[h["Structure flag"]])
-    exc = mc.get("Structure exception · chain deeper than the bands", 0)
-    check("No overlap: every reportee sits in a lower band than their manager — CEO and Chief Officers in Band E agreed; a chain "
-          "deeper than the seven bands is the only marked structure exception, still one level below the manager",
-          not any(str(k).startswith("⚠") for k in mc) and exc == flagged and flagged <= 1, f"{dict(mc)} · flagged {flagged}")
+    emp_lv = {r[h["Emp ID"]]: r[h["IRIS proposed level"]] for r in d}
+    clash = [(r[h["Employee name"]], r[h["IRIS proposed level"]], emp_lv.get(r[h["Manager Emp ID"]])) for r in d
+             if V.band(r[h["IRIS proposed level"]]) not in ("X", "") and V.band(emp_lv.get(r[h["Manager Emp ID"]]) or "") not in ("X", "")
+             and V.VAL[r[h["IRIS proposed level"]]] >= V.VAL[emp_lv[r[h["Manager Emp ID"]]]]]
+    check("No overlap: every reportee sits at a lower level than their manager (B1 under B2, never B2 under B2), no exceptions",
+          not clash and not any(str(k).startswith("⚠") for k in mc) and flagged == 0, f"{dict(mc)} · flagged {flagged} · {clash[:3]}")
     orig = all(J.text(r[h["Reporting manager"]]).find(" · was ") < 0 for r in d)
     check("Everyone reports to their original manager", orig)
-    check("Before any input, the level in force is IRIS's level for everyone and the band rule holds nobody back",
-          all(r[h["Level in force · after the band rule"]] == r[h["IRIS proposed level"]] and not r[h["Band rule · live"]] for r in d))
+    check("Before any input, the level in force is IRIS's level for everyone and the level rule holds nobody back",
+          all(r[h["Level in force · after the level rule"]] == r[h["IRIS proposed level"]] and not r[h["Level rule · live"]] for r in d))
     regular = [lv for lv in V.LEVELS_STD if lv not in ("A1", "E2")]
     overl = [(a, b) for a, b in zip(regular, regular[1:]) if EXP_RANGE[a][1] > EXP_RANGE[b][0]]
     check("Ladder experience ranges do not overlap", not overl, str(overl))
@@ -337,16 +339,17 @@ def live():
     t2 = next(r for r, v in rows0.items() if v[h0["IRIS proposed level"]] == "A3" and r not in used)
     ws.cell(t2, hd["Leader override · any level"]).value = "E2"
     used.add(t2)
-    # F · a leader overrides a Band C manager down to B3: their Band B reportees are held in Band A by the band rule
-    inf0 = {r: rows0[r][h0["Level in force · after the band rule"]] for r in rows0}
+    # F · a leader overrides a Band C manager down to B3: reportees at B3 or above are held one level below, at B2
+    inf0 = {r: rows0[r][h0["Level in force · after the level rule"]] for r in rows0}
     emp_row = {rows0[r][h0["Emp ID"]]: r for r in rows0}
     kids = collections.defaultdict(list)
     for r in rows0:
         m = emp_row.get(rows0[r][h0["Manager Emp ID"]])
         if m:
             kids[m].append(r)
-    mgr_c = next(r for r in rows0 if r not in used and rows0[r][h0["IRIS proposed level"]] in ("C1", "C2")
-                 and sum(1 for k in kids[r] if V.band(inf0[k]) == "B") >= 2 and not any(k in used for k in kids[r]))
+    hi_ = lambda k: V.band(inf0[k]) not in ("X", "") and V.VAL[inf0[k]] >= V.VAL["B3"]
+    mgr_c = next(r for r in rows0 if r not in used and rows0[r][h0["IRIS proposed level"]] in ("C1", "C2", "C+")
+                 and sum(1 for k in kids[r] if hi_(k)) >= 1 and not any(k in used for k in kids[r]))
     ws.cell(mgr_c, hd["Leader override · any level"]).value = "B3"
     used.add(mgr_c)
     # E · a vacant level
@@ -367,10 +370,10 @@ def live():
     e1 = predict("B1", w1, {k: 5 for k in PKEYS}, anc(rows0[t1]))[0]
     check("Live: a leader rating every parameter 5 moves a B1 up — to exactly the level the rule gives",
           got[t1][h["Leader proposed level"]] == e1 and e1 != "B1", f"{got[t1][h['Leader proposed level']]} · expected {e1}")
-    check("Live: an override to E2 shows as the leader's proposal, and the band rule holds the level in force below the manager's band",
-          got[t2][h["Leader proposed level"]] == "E2" and got[t2][h["Level in force · after the band rule"]] != "E2"
-          and str(got[t2][h["Band rule · live"]]).startswith("Held at") and not str(got[t2][h["Manager check · live"]]).startswith("⚠"),
-          f"{got[t2][h['Level in force · after the band rule']]} · {got[t2][h['Band rule · live']]} · {got[t2][h['Manager check · live']]}")
+    check("Live: an override to E2 shows as the leader's proposal, and the level rule holds the level in force below the manager's",
+          got[t2][h["Leader proposed level"]] == "E2" and got[t2][h["Level in force · after the level rule"]] != "E2"
+          and str(got[t2][h["Level rule · live"]]).startswith("Held at") and not str(got[t2][h["Manager check · live"]]).startswith("⚠"),
+          f"{got[t2][h['Level in force · after the level rule']]} · {got[t2][h['Level rule · live']]} · {got[t2][h['Manager check · live']]}")
     # C
     wC = {k: ("VH" if k == p_top else 0) for k in PKEYS}
     eC = expect(p_row, wC)
@@ -401,15 +404,18 @@ def live():
             bad_b.append((rows0[r][h0["Employee name"]], got[r][h["Leader proposed level"]], e))
     check("Live: HR changing the IRIS base on the Role Ladder (a code and a number) re-scores everyone at that role and level",
           not bad_b, f"{len(by_key[bkey])} people · {moved_b} change level · {bad_b[:2]}")
-    held = [k for k in kids[mgr_c] if V.band(inf0[k]) == "B"]
-    ok_f = all(got[k][h["Level in force · after the band rule"]] == "A3" and str(got[k][h["Band rule · live"]]).startswith("Held at A3")
-               for k in held) and got[mgr_c][h["Level in force · after the band rule"]] == "B3"
-    check("Live: the band rule — a manager moved down to B3 holds their Band B reportees at A3, flagged; the only warnings left are "
-          "where no band is left below an A-level manager",
-          ok_f and all(str(got[r][h["Manager check · live"]]).startswith("⚠ No band left") for r in rows0
+    def below(m, lv):
+        lad = ladder_of(lv)
+        return [x for x in lad if V.VAL[x] < V.VAL[m]][-1]
+    held = [k for k in kids[mgr_c] if hi_(k)]
+    exp_f = {k: below("B3", inf0[k]) for k in held}
+    ok_f = all(got[k][h["Level in force · after the level rule"]] == exp_f[k] and str(got[k][h["Level rule · live"]]).startswith("Held at")
+               for k in held) and got[mgr_c][h["Level in force · after the level rule"]] == "B3"
+    check("Live: the level rule — a manager moved down to B3 holds their reportees at B3 or above one level below, says why, and the "
+          "cascade leaves nobody at or above their manager",
+          ok_f and all(str(got[r][h["Manager check · live"]]).startswith("⚠ No level left") for r in rows0
                        if str(got[r][h["Manager check · live"]]).startswith("⚠")),
-          f"{len(held)} reportees held · {[got[k][h['Level in force · after the band rule']] for k in held][:5]} · "
-          f"{[got[k][h['Band rule · live']] for k in held][:1]} · manager {got[mgr_c][h['Level in force · after the band rule']]} · "
+          f"{len(held)} held · {[(got[k][h['Level in force · after the level rule']], exp_f[k]) for k in held][:4]} · "
           f"warnings {[(got[r][h['Employee name']], got[r][h['Manager check · live']]) for r in rows0 if str(got[r][h['Manager check · live']]).startswith('⚠')][:3]}")
     others = sum(1 for r in rows0 if got[r][h["Leader proposed level"]] not in (None, "") and r not in used and r not in by_key[bkey])
     check("Live: nobody else gets a leader proposal", others == 0, f"{others}")
