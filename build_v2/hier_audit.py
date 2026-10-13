@@ -25,7 +25,7 @@ OUT = os.path.join(BM.OUTDIR, "IRIS_JA_Hierarchy_Audit_v2.2.xlsx")
 STAMP = "IRIS · Job Architecture v2.2 · Hierarchy Audit · October 2026 · Internal — Confidential · HR only"
 HRIS = "Employee Master · HRIS 23 Sep 2026"
 OTHER = ["Employee Master · older copy", "CARBON Mapping Master · current", "CARBON Talent Mapping · Raw", "Talent Mapping · iFile collated",
-         "Talent Mapping · iDEAL", "Talent Mapping · Database Content", "Talent Mapping · HR", "v1 workbook"]
+         "Talent Mapping · iDEAL", "Talent Mapping · Database Content", "Talent Mapping · Datatech (HR)", "v1 workbook"]
 
 
 def same(a, b):
@@ -86,8 +86,8 @@ def main(srcdir):
     M, S, people, un = J.build(srcdir)
     lab_of = {"MM": OTHER[1], "CRAW": OTHER[2]}
     for s in S:
-        lab = lab_of.get(s["kind"]) or {"iFile": OTHER[3], "iDEAL": OTHER[4], "Database": OTHER[5], "HR": OTHER[6]}.get(
-            next((k for k in ("iFile", "iDEAL", "Database", "HR") if k in s["label"]), ""), s["label"])
+        lab = lab_of.get(s["kind"]) or {"iFile": OTHER[3], "iDEAL": OTHER[4], "Database": OTHER[5], "Datatech": OTHER[6], "HR": OTHER[6]}.get(
+            next((k for k in ("iFile", "iDEAL", "Database", "Datatech", "HR") if k in s["label"]), ""), s["label"])
         for rec in s["recs"]:
             for hh, v in rec["row"].items():
                 k = J.key(hh)
