@@ -125,7 +125,11 @@ def short_label(l):
 
 def reference_sections(path):
     """[(title, rows)] — sheet 11 in full, M13 from the Master Framework, and the weight benchmark."""
-    out = [("References & Benchmarks · sheet 11 of the v1.15 HR Super Master, in full", _rows(path, "11. References & Benchmarks")[4:])]
+    r11 = [[("Department not recorded" + J.text(x)[len("Not provided · HRIS"):] if isinstance(x, str) and x.startswith("Not provided · HRIS")
+             else ("IRIS Unassigned Vs · Standard: none" + J.text(x)[len("IRIS Unassigned Vs · Standard: —"):]
+                   if isinstance(x, str) and x.startswith("IRIS Unassigned Vs · Standard: —") else x)) for x in r]
+           for r in _rows(path, "11. References & Benchmarks")[4:]]
+    out = [("Department × level benchmarks, peer universe, professional standards and the source register · carried over in full from the HR Super Master", r11)]
     fw = _rows(path, "F14. Master Framework")
     a = next((i for i, r in enumerate(fw) if _cells(r) and J.text(_cells(r)[0]).startswith("M13.")), None)
     b = next((i for i, r in enumerate(fw) if _cells(r) and J.text(_cells(r)[0]).startswith("M14.")), None)

@@ -237,18 +237,63 @@ def std_title(rr, lv, des, track, model_lv=None):
     return std, f"{des} → {std}"
 
 
+def _title_key(s):
+    """A title with case, dashes, spacing and Sr./Jr. abbreviations ironed out, to tell a wording change from a real one."""
+    s = J.text(s).lower().replace("\xa0", " ")
+    s = re.sub(r"\bsr\b\.?", "senior", s)
+    s = re.sub(r"\bjr\b\.?", "junior", s)
+    s = re.sub(r"\bhuman resource\b", "human resources", s)
+    return re.sub(r"[^a-z0-9+]+", " ", s).strip()
+
+
 def person_title(rr, lv, tm, H):
-    """The standard title for a person and what changes for them, measured from the title they hold today: HR's final
-    designation sets the function named after the dash, but if their current designation is already the standard title,
-    nothing changes."""
+    """The standard title for a person and what changes for them, always measured from the title they hold today (the
+    Employee Master's designation). HR's final designation sets the function named after the dash; where the standard
+    title is HR's final designation, the change says so. A person moved down keeps today's title for one cycle."""
     des = J.text(tm[H["Final designation"]])
-    std, change = std_title(rr, lv, des, tm[H["Track"]], J.text(tm[H["FINAL LEVEL"]]))
-    cur = J.text(tm[H["Current designation"]]) or des
-    if cur == std:
+    std, _ = std_title(rr, lv, des, tm[H["Track"]], J.text(tm[H["FINAL LEVEL"]]))
+    cur = J.text(tm[H["Current designation"]])
+    model_lv = J.text(tm[H["FINAL LEVEL"]])
+    if not std or cur == std:
         return std, ""
-    if change and cur != des:
-        change = change.replace(des, cur, 1)
-    return std, change
+    if not cur:
+        return std, f"New title · {std}"
+    if _title_key(cur) == _title_key(std):
+        return std, f"Wording only · {cur} → {std}"
+    if V.VAL.get(lv, 0) < V.VAL.get(model_lv, 0):
+        return std, f"Keeps {cur} for one cycle · then {std}"
+    return std, f"{cur} → {std}" + (" · HR's final designation" if std == des else "")
+
+
+LONG_TEXT = {"Inputs received in the survey", "KRAs from the manager", "Evidence used for the ratings", "Justification · IRIS and Market"}
+
+
+def fit_rows(ws, first, last=None, hdr_row=6, skip=LONG_TEXT):
+    """Raise each row's height until its wrapped text shows in full (never lowers a row). Merged cells and the long
+    free-text columns are left out: those are read in the cell or on the Person Card."""
+    merged = set()
+    for m in ws.merged_cells.ranges:
+        for rr_ in range(m.min_row, m.max_row + 1):
+            for cc_ in range(m.min_col, m.max_col + 1):
+                merged.add((rr_, cc_))
+    skip_cols = {c.column for c in ws[hdr_row] if c.value in skip} if hdr_row else set()
+    for row in ws.iter_rows(min_row=first, max_row=last or ws.max_row):
+        tw = []
+        for c in row:
+            v = c.value
+            if not isinstance(v, str) or v.startswith("=") or (c.row, c.column) in merged or c.column in skip_cols:
+                continue
+            if not (c.alignment and c.alignment.wrap_text) and len(v) * 1.05 <= (ws.column_dimensions[c.column_letter].width or 8.43):
+                continue
+            if not (c.alignment and c.alignment.wrap_text):
+                c.alignment = Alignment(wrap_text=True, vertical=(c.alignment.vertical if c.alignment else None) or "top",
+                                        horizontal=c.alignment.horizontal if c.alignment else None)
+            tw.append((v, ws.column_dimensions[c.column_letter].width or 8.43))
+        if tw:
+            r_ = row[0].row
+            need = Y.est_height(tw, base=13.2)
+            if need > (ws.row_dimensions[r_].height or 15):
+                ws.row_dimensions[r_].height = need
 
 
 def blank_if_none(v):
@@ -269,7 +314,7 @@ def put_row(ws, r, cols, vals, tint_by_title=True):
 
 
 def descriptors(R, fam, lv, cats, cj, work):
-    """Low / Medium / High at this level for each parameter: Medium = the level as defined; Low = the level below; High = the level above."""
+    """Ratings 1, 3 and 5 at this level for each parameter: 3 = the level as defined; 1 = the level below; 5 = the level above."""
     f4 = R["f4"].get(lv, {})
     g = R["grid"].get(lv, {})
     pos = V.LEVELS_PC.index(lv)
@@ -448,7 +493,7 @@ def main(srcdir, simple=False):
         fam_work[k[0]][roles[k]["work"]] += len(roles[k]["people"])
     vacant = []
     for fam, sub in sorted({(J.text(c[1]), J.text(c[2])) for c in M["cat"]}):
-        if not fam or not sub or fam in ("Unassigned", V.HEAD_FAMILY, V.ENT_FAMILY):
+        if not fam or not sub or fam in ("Unassigned", V.HEAD_FAMILY, V.ENT_FAMILY) or "not recorded" in sub.lower():
             continue
         for tg in ("IC", "Manager"):
             if (fam, sub, tg) not in roles:
@@ -577,7 +622,7 @@ def main(srcdir, simple=False):
     name_range(wb, "LIST_RATE", S_BE, f"$A${top}:$A${r - 1}")
     r += 1
     for j, h in enumerate(["Level", "Value", "Band", "Band rank", "Standard ladder", "Player-Coach ladder",
-                           "Highest level a reportee may hold · one below · standard ladder", "· Player-Coach ladder"], 1):
+                           "Highest level a reportee may hold · standard ladder", "Highest level a reportee may hold · Player-Coach ladder"], 1):
         Y.header(ws.cell(r, j, h), Y.NAVY)
     r += 1
     top = r
@@ -615,7 +660,10 @@ def main(srcdir, simple=False):
     ws.column_dimensions["A"].width = 40
     for c_ in "BCDEF":
         ws.column_dimensions[c_].width = 14
-    ws.column_dimensions["E"].width = 60
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 40
+    ws.column_dimensions["F"].width = 60
+    ws.column_dimensions["G"].width = ws.column_dimensions["H"].width = 26
 
     # ================================================================ Ladder
     ws = ws_lad
@@ -786,7 +834,7 @@ def main(srcdir, simple=False):
 
     # ================================================================ Role Definitions
     ws = ws_rm
-    Y.banner(ws, "Role Definitions — what Low, Medium and High mean, role by role and level by level",
+    Y.banner(ws, "Role Definitions — what ratings 1, 3 and 5 mean, role by role and level by level",
              "Sheet 4 · Every role — held or vacant — with every level it runs through. Rating 3 Meets is the level as defined; 1 Well below is working at the "
              "level below on that parameter; 5 Well above is already working at the level above; 2 and 4 are half a level either side. Use these words when you rate on Talent Mapping. "
              "The weightage for each role and level is on sheet 3.", STAMP, width_cols=14)
@@ -1144,7 +1192,7 @@ def main(srcdir, simple=False):
         if yrs is not None and mr:
             nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", mr)]
             if nums:
-                tag = "Low" if yrs < nums[0] else ("High" if len(nums) > 1 and yrs > nums[-1] else "Medium")
+                tag = "Below" if yrs < nums[0] else ("Above" if len(nums) > 1 and yrs > nums[-1] else "Within")
                 exp_txt = f"{tag} · {yrs:g} yrs vs market {mr} yrs for {lv}"
         reps = len([k_ for k_ in org.kids[i] if V.band(new[k_]) != "X"])
         span_txt = ""
@@ -1624,13 +1672,20 @@ def main(srcdir, simple=False):
                 h = x.hyperlink
                 if h is not None and str(h.target or "").startswith("#"):
                     x.hyperlink = Hyperlink(ref=x.coordinate, location=str(h.target)[1:], display=h.display, tooltip=h.tooltip)
+    # rows tall enough to show their text: the reference tables in full, the person sheets for everything but free text
+    for ws_ in (ws_lad, ws_rj, ws_be, ws_ref, ws_how, ws_mb, ws_rm):
+        if ws_.title in wb.sheetnames:
+            fit_rows(ws_, 5 if ws_ is not ws_ref else 1, hdr_row=6 if ws_ is not ws_ref else None)
+    for ws_ in (ws_tm, ws_rl, ws_raw):
+        fit_rows(ws_, 6, 6, hdr_row=None)
+    fit_rows(ws_tm, 7)
     wb.active = 0
     wb.calculation.fullCalcOnLoad = True
     wb.save(OUTFILE)
     work = os.path.join(os.environ.get("JA_WORK", "/tmp"), "ja_model")
     os.makedirs(work, exist_ok=True)
     n_f, errors = X.cache_values(OUTFILE, work)
-    print(f"Wrote {OUTFILE}: people {len(order)} · roles {len(fw)} · moved down {moved_dn} up {moved_up} · structure flags {len(flag)} · "
+    print(f"Wrote {OUTFILE}: people {len(order)} · roles on the ladder {sum(1 for f_ in fw.values() if f_.get('rows'))} · moved down {moved_dn} up {moved_up} · structure flags {len(flag)} · "
           f"title changes {sum(1 for i in order if person_title(roles[by_i[i]['role']], new[i], by_i[i]['tm'], H)[1])} · "
           f"formulas {n_f} · errors {len(errors)}")
     if errors:

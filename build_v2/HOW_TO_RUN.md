@@ -33,6 +33,9 @@ python3 hier_audit.py  <source folder>     # writes the Hierarchy Audit from the
 # checks: 48 on the Master, 44 on the Simplified, including live edits recalculated in LibreOffice
 JA_FILE=<workbook> JA_SRC=<source folder> python3 verify_model.py
 
+# the cross-sheet QA sweep: counts, levels, roles, titles, managers, privacy, text glitches
+python3 qa_sweep.py <workbook>
+
 # the scan for anything that makes Excel offer to repair a file
 python3 xlsx_check.py <workbook> [<workbook> …]
 ```
@@ -50,6 +53,7 @@ The schemas are in `schemaorg_apache_xmlbeans/src` inside Apache POI's `ooxml-sc
 | `build_super.py` | Person values and links shared with the HR Super Master builder. |
 | `hier_audit.py` | The Hierarchy Audit: every reporting line checked against the level rule, plus every source file that names a different manager. |
 | `verify_model.py` | The check suite, with live tests recalculated in LibreOffice. |
+| `qa_sweep.py` | The cross-sheet QA sweep: every sheet checked against every other, plus privacy and text glitches. |
 | `xlsx_check.py` | XML-level scan for Excel repair triggers, plus the optional schema validation. |
 | `ja_common.py` | Text, name and ID helpers. |
 | `ja_person.py` | Reads the per-person source sheets. |

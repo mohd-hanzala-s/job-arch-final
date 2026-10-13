@@ -264,6 +264,7 @@ def main(srcdir):
         ws.column_dimensions[c].width = 20
     for w in wb.worksheets:
         w.sheet_view.zoomScale = 90
+        BM.fit_rows(w, 5, hdr_row=None)   # rows tall enough to show their text
     wb.save(OUT)
     print(f"Wrote {OUT}: {dict(stat)} · differences {n_diff} people · CARBON proposals {n_prop}")
     return stat, n_diff, n_prop

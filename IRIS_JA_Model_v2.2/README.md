@@ -6,6 +6,7 @@ Two workbooks, built by one pipeline from the same data:
 |---|---|---|
 | `IRIS_JA_Master_v2.2.xlsx` | HR | Everything: 9 numbered sheets plus Backend Data and References & Benchmarks. Raw Data holds every bit of data received plus the analysis on file from every earlier version. |
 | `IRIS_JA_Simplified_v2.2.xlsx` | Business heads | The same live model in 7 numbered sheets plus Backend Data and References. Raw Data holds only what was received. The market reference columns on Talent Mapping are folded away; click + to open them. |
+| `IRIS_JA_QA_Report_v2.2.md` | CHRO and HR | The QA result, the figures that matter and the points to raise. It names people, so it travels with the workbooks only. |
 | `IRIS_JA_Hierarchy_Audit_v2.2.xlsx` | HR | Every reporting line checked against the level rule, and every person whose manager in another source file differs from the Employee Master. |
 
 Both files have no formula errors and pass every check in `build_v2/verify_model.py`: 48 checks on the Master and 44 on the Simplified. One check scans each file's XML for anything that makes Excel offer to repair it. All three files are also valid against the ECMA-376 SpreadsheetML schema.
@@ -13,7 +14,7 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 ## What changed in v2.2
 
 ### The framework is role-based
-- **A role is a sub-family**, such as "Front-End / UI Development". There are 64 roles, held or not yet held.
+- **A role is a sub-family**, such as "Front-End / UI Development". There are 61 roles on the ladder: 56 are held today and 5 are not yet held. Consultants sit outside it.
 - Every role runs on one shared ladder from A1 Intern up to E1, the head of the function. E2 is the one enterprise CEO role.
   - In Bands B and C a role has two lanes, IC and Manager. This is the dual career path, and the market weighs the lanes differently.
   - Band A, the Player-Coach steps (B+, C+) and Bands D and E have one shared path.
@@ -64,12 +65,30 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 
 ### Final review fixes
 - **No function's ladder runs to CEO.** A function's role now tops out at E1, the CXO of the function. E2 is the one enterprise CEO role. Titles such as "Chief Executive Officer – Administration & Facilities" are gone.
-- **Title changes start from the title the person holds today.** If their current designation is already the standard title, no change is shown.
+- **Title changes start from the title the person holds today,** as it appears in the Employee Master. 520 people would get a different title:
+  - 453 move to HR's final designation.
+  - 43 move to the role's standard title.
+  - 17 were moved down a level and keep today's title for one cycle.
+  - 7 differ in wording only.
+  - 66 people keep their title.
 - **Consultants are labelled as consultants.** They sit outside the ladder, and their placement note now says so.
 - **Span wording is fixed.**
   - A3 shows "No direct reports · guides 1–3 juniors informally" instead of "None · …".
   - Counts read "1 direct report", not "1 direct reports".
 - **The engine column is renamed** "Level before the level rule".
+- **Role Definitions talks about ratings 1, 3 and 5,** not "Low, Medium and High".
+- **Experience against the market reads** "Below", "Within" or "Above" the range.
+- **An empty role is gone.** "Marketing · role not recorded" was a catalogue entry nobody held.
+- **Rows are tall enough to show their text** on the Ladder, Role Journey, Market Benchmark, Backend Data, References, the Hierarchy Audit and the short columns of Talent Mapping. The long survey, KRA and justification texts are capped at Excel's row limit; select the cell, or open the Person Card, to read them in full.
+- **A QA sweep, `build_v2/qa_sweep.py`, checks every sheet against every other.** It covers:
+  - counts
+  - levels, bands, roles and titles
+  - managers and layers
+  - the state before any leader input
+  - privacy
+  - text glitches
+  
+  Both files pass it with no findings.
 
 ### Hierarchy audit
 - **Every reporting line follows the level rule.** Each reportee sits below their manager, both at the IRIS level and at the level in force.
@@ -86,7 +105,7 @@ Both files have no formula errors and pass every check in `build_v2/verify_model
 |---|---|
 | 1 | How it works: the story, the scales, the role framework, the level rule |
 | 2 | Ladder: 12 levels, 5 bands and 2 Player-Coach steps, each with its own experience range |
-| 3 | Role Ladder & Weightage: the base, 64 roles × levels × lanes, with IRIS base (HR may edit), Market, Leader, In use and Share |
+| 3 | Role Ladder & Weightage: the base, 61 roles × levels × lanes, with IRIS base (HR may edit), Market, Leader, In use and Share |
 | 4 | Role Definitions: what ratings 1, 3 and 5 mean per role and level |
 | 5 | Role Journey: two rows per role, IRIS and Market benchmark, A1 to E2 |
 | 6 | Market Benchmark: published factor shares in the five steps |
